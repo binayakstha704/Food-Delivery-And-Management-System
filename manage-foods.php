@@ -1,5 +1,5 @@
 <?php 
-include('db.php'); 
+include('db1.php'); 
 
 // --- 1. DELETE LOGIC ---
 if(isset($_GET['delete_id'])) {
