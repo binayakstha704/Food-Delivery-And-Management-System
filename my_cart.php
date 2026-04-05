@@ -194,9 +194,15 @@ $total = $subtotal + $delivery - $discount_amt;
 </nav>
 
 <div class="tab-bar">
+<<<<<<< HEAD
   <a href="index.php"> Home</a>
   <a href="my_cart.php" class="active">🛒 My Cart</a>
   <a href="my_orders.php"> My Orders</a>
+=======
+  <a href="index.php">🏠 Home</a>
+  <a href="my_cart.php" class="active">🛒 My Cart</a>
+  <a href="my_orders.php">📦 My Orders</a>
+>>>>>>> cb72e933b77b3a24b02f699e47ba769dd7907e3b
   <a href="user_profile.php">👤 Profile</a>
 </div>
 

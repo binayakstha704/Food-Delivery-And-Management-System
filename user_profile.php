@@ -308,8 +308,13 @@ $orders = [
 </nav>
 
 <div class="tab-bar">
+<<<<<<< HEAD
   <a href="index.php"> Home</a>
   <a href="my_orders.php"> My Orders</a>
+=======
+  <a href="index.php">🏠 Home</a>
+  <a href="my_orders.php">📦 My Orders</a>
+>>>>>>> cb72e933b77b3a24b02f699e47ba769dd7907e3b
   <a href="#">🔔 Notifications</a>
   <a href="user_profile.php" class="active">👤 Profile</a>
 </div>
@@ -348,9 +353,15 @@ $orders = [
           <li><a href="#" class="active"><span class="menu-icon">👤</span> Personal Info</a></li>
           <li><a href="my_orders.php"><span class="menu-icon">📦</span> Order History</a></li>
           <li><a href="#"><span class="menu-icon">📍</span> Addresses</a></li>
+<<<<<<< HEAD
           <li><a href="#"><span class="menu-icon"></span> Payment Methods</a></li>
           <li><a href="#"><span class="menu-icon"></span> Notifications</a></li>
           <li><a href="#"><span class="menu-icon"></span> Change Password</a></li>
+=======
+          <li><a href="#"><span class="menu-icon">💳</span> Payment Methods</a></li>
+          <li><a href="#"><span class="menu-icon">🔔</span> Notifications</a></li>
+          <li><a href="#"><span class="menu-icon">🔒</span> Change Password</a></li>
+>>>>>>> cb72e933b77b3a24b02f699e47ba769dd7907e3b
         </ul>
 
         <form method="POST" action="logout.php">
