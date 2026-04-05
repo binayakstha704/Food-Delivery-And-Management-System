@@ -17,6 +17,7 @@
                 <span style="font-family:'Playfair Display',serif; font-size:1.2rem; color:var(--peach);">Swaad</span><span style="font-family:'Playfair Display',serif; font-size:1.2rem; color:var(--bright-orange);">Unlimited</span></span>
                 <small>Admin Panel</small>
             </div>
+            
         </div>
          <ul class="nav-links">
             <li ><a href="admin.php"><i class="fas fa-th-large"></i> Dashboard</a></li>
