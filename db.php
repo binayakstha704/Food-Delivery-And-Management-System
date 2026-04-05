@@ -2,11 +2,13 @@
 $host = "localhost";
 $user = "root";
 $pass = "";
-$dbname = "Swaad_Unlimited";
+$db   = "Swaad_Unlimited";
 
-$conn = mysqli_connect($host, $user, $pass, $dbname);
+// Create connection
+$conn = new mysqli($host, $user, $pass, $db);
 
-if (!$conn) {
-    die("Connection failed: " . mysqli_connect_error());
+// Check connection
+if ($conn->connect_error) {
+    die("Database Connection Failed: " . $conn->connect_error);
 }
 ?>

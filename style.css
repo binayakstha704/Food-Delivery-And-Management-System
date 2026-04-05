@@ -1,515 +1,278 @@
 :root {
-  --sidebar-bg: #1a0f0a; /* Dark Brown */
-  --accent-orange: #e67e22; /* Primary Orange */
-  --bright-orange: #ff6b1a;
-  --peach: #ffd5b0;
-  --bg-light: #fff5ee; /* Light Cream Background */
-  --text-white: #ffffff;
-  --peach-light: #f5e9d7;
+  --peach: #fad3b7;
+  --bright-orange: #c25b1c;
+  --dark-brown: #311103;
+  --white: #ffffff;
 }
 
-body {
-  font-family: "Inter", sans-serif;
+/* RESET */
+* {
   margin: 0;
-  display: flex;
-  background-color: var(--peach-light);
+  padding: 0;
+  box-sizing: border-box;
+  font-family: "Poppins", sans-serif;
 }
 
-/* Sidebar Styling */
-.sidebar {
-  width: 260px;
-  background-color: var(--sidebar-bg);
+/* BACKGROUND */
+body {
   height: 100vh;
-  color: white;
-  position: fixed;
-  padding: 30px 0;
-}
-
-/* This part makes the logo image small and fit */
-.logo-section img {
-  width: 45px; /* Adjust this number to make it smaller or bigger */
-  height: 45px; /* Keep width and height same for a square look */
-  object-fit: contain; /* Ensures the logo isn't stretched or squished */
-  border-radius: 8px; /* Optional: gives the logo slightly rounded corners */
-}
-
-/* Updated logo-section to ensure vertical alignment */
-.logo-section {
-  padding: 20px 25px; /* Slightly reduced top/bottom padding */
+  background: linear-gradient(135deg, var(--peach) 50%, var(--dark-brown) 50%);
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin-bottom: 30px;
+  justify-content: center;
+  background-color: var(--peach-light);
+}
+/* CONTAINER (CENTER FIX) */
+.container {
+  width: 100%;
+  max-width: 350px; /* 🔥 smaller width */
 }
 
-/* Style the text next to the logo so it aligns nicely */
-.logo-section h3 {
-  font-size: 18px;
-  margin: 0;
-  color: var(--accent-orange);
-  line-height: 1;
+/* BRANDING */
+.logo {
+  text-align: center;
+  margin-bottom: 15px;
 }
 
-.logo-section small {
+.brand {
+  font-family: "Playfair Display", serif;
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: #000000;
+}
+
+.swaad {
+  font-family: "Playfair Display", serif;
+  color: var(--bright-orange);
+  /* 🔥 KEY FIX */
+}
+
+.unlimited {
+  font-family: "Playfair Display", serif;
+  color: var(--bright-orange);
+}
+
+.logo small {
   display: block;
-  color: #a67c52;
-  font-size: 11px;
+  color: #555;
+  margin-top: 3px;
+  font-size: 0.75rem;
 }
 
-.nav-links {
-  list-style: none;
-  padding: 0;
+/* WHITE CARD (MAIN FIX) */
+.card {
+  background: var(--white);
+  padding: 20px 18px; /* 🔥 reduced padding */
+  border-radius: 12px;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.15);
 }
-.nav-links a {
-  text-decoration: none;
-  color: #bdc3c7;
-  display: block;
-  padding: 15px 25px;
+
+/* TITLE */
+.card h2 {
+  text-align: center;
+  margin-bottom: 15px;
+  font-family: "Playfair Display", serif;
+  font-size: 1.3rem; /* 🔥 smaller */
+  color: var(--dark-brown);
+}
+
+/* MESSAGE */
+.message {
+  text-align: center;
+  margin-bottom: 10px;
+  font-size: 0.8rem;
+  color: red;
+}
+
+/* INPUT GROUP */
+.input-group {
+  margin-bottom: 12px; /* 🔥 tighter spacing */
+}
+
+.input-group label {
+  font-size: 0.75rem;
+  color: #333;
+}
+
+/* INPUT */
+.input-group input {
+  width: 100%;
+  padding: 9px; /* 🔥 smaller inputs */
+  margin-top: 4px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  outline: none;
+  font-size: 0.85rem;
+  transition: 0.2s;
+}
+
+.input-group input:focus {
+  border-color: var(--bright-orange);
+  box-shadow: 0 0 4px rgba(194, 91, 28, 0.2);
+}
+
+/* BUTTON */
+button {
+  width: 100%;
+  padding: 10px; /* 🔥 smaller button */
+  border: none;
+  background: var(--bright-orange);
+  color: white;
+  border-radius: 6px;
   font-weight: 500;
+  cursor: pointer;
+  font-size: 0.85rem;
   transition: 0.3s;
 }
 
-.nav-links :hover {
-  background-color: var(--accent-orange);
-  color: white;
-  border-radius: 0 10px 10px 0;
-  margin-right: 20px;
+button:hover {
+  background: #a64d16;
 }
 
-/* Main Content Area */
-.main-content {
-  margin-left: 260px;
-  padding: 40px;
-  width: calc(100% - 260px);
-}
-
-.card {
-  background: white;
-  padding: 30px;
-  border-radius: 20px;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.02);
-  margin-bottom: 50px;
-}
-
-/* Table Styling */
-table {
-  width: 100%;
-  border-collapse: collapse;
-  background: white;
-  border-radius: 15px;
-  overflow: hidden;
-}
-
-th {
-  background-color: var(--sidebar-bg);
-  color: white;
-  padding: 18px;
-  text-align: left;
-  font-weight: 600;
-}
-
-td {
-  padding: 18px;
-  border-bottom: 1px solid #f1f1f1;
-}
-
-.badge {
-  padding: 6px 14px;
-  border-radius: 20px;
-  font-size: 13px;
-  font-weight: 500;
-}
-.delivered,
-.available {
-  background: #fff0e6;
-  color: #e67e22;
-}
-.unavailable {
-  background: #fdeaea;
-  color: #e74c3c;
-}
-/* Add Food Button */
-.add-btn {
-  background-color: var(--accent-orange);
-  color: white;
-  border: none;
-  padding: 12px 25px;
-  border-radius: 8px;
-  font-weight: bold;
-  cursor: pointer;
-}
-
-/* Modal Background */
-.modal {
-  display: none;
+/* POPUP */
+.popup {
   position: fixed;
-  z-index: 1000;
-  left: 0;
-  top: 0;
-  width: 100%;
-  height: 100%;
-  background-color: rgba(0, 0, 0, 0.5);
-  justify-content: center;
-  align-items: center;
-}
-
-/* Modal Box */
-.modal-content {
-  background-color: white;
-  padding: 30px;
-  border-radius: 15px;
-  width: 400px;
-  position: relative;
-}
-
-.close {
-  position: absolute;
-  right: 20px;
   top: 15px;
-  font-size: 24px;
-  cursor: pointer;
-  color: #888;
-}
-
-/* Form Styling */
-.modal-content form {
-  display: flex;
-  flex-direction: column;
-  gap: 15px;
-  margin-top: 20px;
-}
-
-.modal-content input,
-.modal-content select,
-.modal-content textarea {
-  padding: 10px;
-  border: 1px solid #ddd;
-  border-radius: 5px;
-  font-family: inherit;
-}
-
-.save-btn {
-  background-color: var(--sidebar-bg);
+  right: 15px;
+  background: #28a745;
   color: white;
-  border: none;
-  padding: 12px;
-  border-radius: 5px;
-  cursor: pointer;
-  font-weight: bold;
-}
-.save-btn:hover {
-  background-color: var(--accent-orange);
-}
-/* Action Buttons */
-.edit-btn,
-.delete-btn {
-  text-decoration: none;
-  background: none;
-  border: none;
-  cursor: pointer;
-  font-size: 18px;
-  margin-right: 10px;
-}
-
-.delete-btn {
-  color: #e74c3c;
-}
-
-/* Category Badge (Orange tint like your design) */
-.badge-cat {
-  background: #fff0e6;
-  color: #e67e22;
-  padding: 4px 10px;
-  border-radius: 5px;
-  font-size: 12px;
-}
-
-/* Modals */
-.modal {
+  padding: 10px 15px;
+  border-radius: 6px;
+  font-size: 0.8rem;
   display: none;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+}
+/* Top-right circular logo - registration page */
+.reg-logo-circle {
   position: fixed;
-  z-index: 100;
-  left: 0;
-  top: 0;
-  width: 100%;
-  height: 100%;
-  background: rgba(0, 0, 0, 0.6);
+  top: 18px;
+  right: 18px;
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  background-color: #fff;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.25);
+  display: flex;
+  align-items: center;
   justify-content: center;
-  align-items: center;
-}
-.modal-content {
-  background: white;
-  padding: 30px;
-  border-radius: 15px;
-  width: 350px;
-}
-.modal-content input,
-.modal-content select {
-  width: 100%;
-  padding: 10px;
-  margin: 10px 0;
-  border: 1px solid #ddd;
-  border-radius: 5px;
-  box-sizing: border-box;
-}
-/* Specific Badge for Warning */
-.badge.warning {
-  background-color: #fff3e0;
-  color: #ef6c00;
+  overflow: hidden;
+  z-index: 1000;
+  border: 2px solid #f0e0d0;
 }
 
-/* Ensure the filter bar is a form but maintains layout */
-form.filter-bar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 25px;
-  width: 100%;
+.reg-logo-circle img {
+  width: 80%;
+  height: 80%;
+  object-fit: contain;
 }
-
-/* Prevent unwanted color changes to global sidebar links */
-.sidebar .nav-links li a {
-  /* Keeps your existing sidebar colors */
-}
-
-/* Specific styling for the log table container to prevent overflow */
-.table-container {
-  background: white;
-  border-radius: 12px;
-  border: 1px solid #f0f0f0;
-  overflow-x: auto;
-}
-
-/* Subtle Hover effect for table rows */
-tbody tr:hover {
-  background-color: #fffaf5;
-}
-
-/* Date and select inputs styling refinement */
-.input-wrapper select,
-.input-wrapper input[type="date"] {
-  cursor: pointer;
-  font-family: inherit;
-}
-/* --- USER LOGS PAGE SPECIFIC STYLES --- */
-
-/* Header Layout */
-.header-container {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 25px;
-}
-
-.page-title {
-  color: #21120a;
-  font-size: 24px;
-  font-weight: 700;
-}
-
-/* Export Button (Orange) */
-.btn-export {
-  background-color: #d35400; /* Rich Orange */
-  color: #ffffff;
-  padding: 10px 22px;
-  border: none;
-  border-radius: 10px;
-  font-weight: 600;
-  cursor: pointer;
+/* Back button - registration page */
+.reg-back-btn {
+  position: fixed;
+  top: 20px;
+  left: 20px;
   display: flex;
   align-items: center;
   gap: 8px;
-  transition: background 0.3s ease;
-}
-
-.btn-export:hover {
-  background-color: #ba4a00;
-}
-
-/* Filter Bar Layout */
-.filter-bar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 25px;
-}
-
-.filter-group {
-  display: flex;
-  gap: 15px;
-}
-
-/* Rounded Filter Inputs */
-.input-wrapper {
-  background: #ffffff;
-  border: 1px solid #ffdcb9; /* Light Peach Border */
-  border-radius: 12px;
-  padding: 8px 15px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  color: #8b4513; /* Brownish Icon Color */
-}
-
-.input-wrapper select,
-.input-wrapper input[type="date"] {
-  border: none;
-  outline: none;
-  background: transparent;
-  font-size: 14px;
-  color: #333;
-  cursor: pointer;
-}
-
-/* Total Logs Badge (Peach) */
-.stats-badge {
-  background-color: #ffdab9; /* Peach Background */
-  color: #8b4513; /* Dark Brown Text */
-  padding: 12px 25px;
-  border-radius: 12px;
+  text-decoration: none;
+  background-color: #fff;
+  color: #2c0f00;
+  padding: 6px 12px;
+  border-radius: 50px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
   font-weight: 600;
-  font-size: 14px;
+  font-size: 15px;
+  border: 2px solid #f0e0d0;
+  z-index: 1000;
+  transition: all 0.25s ease;
 }
 
-/* Status Badges */
-.badge {
-  padding: 6px 14px;
-  border-radius: 20px;
-  font-size: 12px;
-  font-weight: 600;
-  display: inline-block;
+.reg-back-btn:hover {
+  background-color: #c0581a;
+  color: #fff;
+  border-color: #c0581a;
+  transform: translateX(-3px);
+  box-shadow: 0 6px 20px rgba(192, 88, 26, 0.35);
 }
 
-.badge.success {
-  background-color: #e8f5e9;
-  color: #2e7d32;
+.reg-back-arrow {
+  font-size: 18px;
+  line-height: 1;
+  transition: transform 0.25s ease;
 }
 
-.badge.failed {
-  background-color: #ffebee;
-  color: #c62828;
+.reg-back-btn:hover .reg-back-arrow {
+  transform: translateX(-3px);
 }
 
-.badge.warning {
-  background-color: #fff3e0;
-  color: #ef6c00; /* Amber for Warning */
+.reg-back-text {
+  letter-spacing: 0.5px;
+}
+/* Popup Overlay */
+.reg-popup-overlay {
+  position: fixed;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9999;
+  animation: reg-slideDown 0.3s ease;
 }
 
-/* Table container styling */
-.table-container {
-  background: #ffffff;
-  border-radius: 15px;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.03);
-  overflow: hidden;
-}
-
-table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-th {
-  background-color: #8b4513;
-  padding: 15px;
-  text-align: left;
-  color: white;
-  font-size: 13px;
-  border-bottom: 1px solid #eee;
-}
-
-td {
-  padding: 15px;
-  border-bottom: 1px solid #f9f9f9;
-  font-size: 14px;
-}
-
-.timestamp {
-  color: #888;
-}
-/* Top Navigation Bar */
-/* Top Navigation Bar - Exact Match to Screenshots */
-.top-nav {
-  display: flex;
-  justify-content: space-between;
-  padding: 22px; /* Thinner vertical padding like your SS */
-  background-color: white;
-  border-bottom: 1px solid #ffdcb9; /* That specific thin peach line */
-  margin-bottom: 22px;
-  height: 2px; /* Fixed height for a professional look */
-  border-radius: 10px;
-}
-
-.left-section {
+/* Popup Box */
+.reg-popup-box {
   display: flex;
   align-items: center;
   gap: 12px;
-}
-
-/* The small logo next to Admin Dashboard */
-.nav-logo {
-  width: 32px !important;
-  height: 32px !important;
-  object-fit: contain;
-  border-radius: 4px;
-}
-
-.nav-title {
-  font-size: 17px;
-  color: #21120a; /* Dark Chocolate */
-  font-weight: 600;
-  letter-spacing: -0.3px;
-}
-
-/* Right Section Icons & Admin Pill */
-.right-section {
-  display: flex;
-  align-items: center;
-  gap: 22px;
-}
-
-/* Notification Bell with the Orange Dot */
-.notification-icon {
-  position: relative;
-  font-size: 19px;
-  color: #8b4513; /* Brownish Icon */
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-}
-
-/* The Sleek Admin Profile Pill - Exact Shape */
-.admin-profile {
-  background-color: #ffdab9; /* Peach background */
-  color: #21120a; /* Dark Brown Text */
-  padding: 7px 16px;
-  border-radius: 10px; /* Softer rounded corners like image_a67be5.png */
-  font-weight: 600;
-  font-size: 13px;
-  margin-bottom: 30px;
-}
-.admin-profile-btn {
-  background-color: #ffdab9; /* Peach background */
-  color: #21120a; /* Dark Brown Text */
-  padding: 7px 16px;
-  border-radius: 10px; /* Softer rounded corners like image_a67be5.png */
-  font-weight: 600;
-  font-size: 13px;
-}
-
-.admin-profile i {
+  padding: 16px 28px;
+  border-radius: 50px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.18);
+  font-family: "Poppins", sans-serif;
   font-size: 15px;
-  color: #8b4513;
+  font-weight: 500;
+  min-width: 320px;
+  justify-content: center;
 }
 
-/* Logout Icon styling */
-.logout-btn {
-  color: white;
-  background: red;
-  padding: 5px 10px;
-  border-radius: 5px;
-  text-decoration: none;
+/* Error Style */
+.reg-popup-error {
+  background-color: #fff3f3;
+  border: 2px solid #e74c3c;
+  color: #c0392b;
 }
 
-.logout-btn i {
-  margin-right: 5px;
+/* Success Style */
+.reg-popup-success {
+  background-color: #f0fff4;
+  border: 2px solid #27ae60;
+  color: #1e8449;
+}
+
+.reg-popup-icon {
+  font-size: 20px;
+}
+
+/* Slide down animation */
+@keyframes reg-slideDown {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+/* Fade out */
+@keyframes reg-fadeOut {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+.reg-popup-hide {
+  animation: reg-fadeOut 0.3s ease forwards;
+  pointer-events: none;
 }
