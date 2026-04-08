@@ -1,0 +1,181 @@
+/* RESET */
+body {
+  margin: 0;
+  font-family: "Poppins", sans-serif;
+  background: #0f172a;
+  color: white;
+}
+
+/* TOP BAR */
+.top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 24px;
+  background: rgba(30, 41, 59, 0.9);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid #334155;
+}
+
+.top h2 {
+  margin: 0;
+  font-weight: 600;
+}
+
+.top a {
+  color: #f87171;
+  text-decoration: none;
+  padding: 6px 12px;
+  border-radius: 6px;
+  transition: 0.3s;
+}
+
+.top a:hover {
+  background: rgba(248, 113, 113, 0.15);
+}
+
+/* CONTAINER */
+.container {
+  padding: 24px;
+}
+
+/* MESSAGES */
+.msg {
+  padding: 12px 16px;
+  margin-bottom: 15px;
+  border-radius: 10px;
+  font-size: 14px;
+  animation: fadeIn 0.4s ease;
+}
+
+.ok {
+  background: rgba(34, 197, 94, 0.15);
+  border: 1px solid #22c55e;
+}
+
+.err {
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid #ef4444;
+}
+
+/* ANIMATION */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* STATS */
+.stats {
+  display: flex;
+  gap: 15px;
+  margin-bottom: 25px;
+}
+
+.stats div {
+  background: linear-gradient(145deg, #1e293b, #111827);
+  padding: 18px;
+  border-radius: 12px;
+  flex: 1;
+  text-align: center;
+  transition: 0.3s;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+}
+
+.stats div:hover {
+  transform: translateY(-3px);
+}
+
+/* TABLE */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  background: #1e293b;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+th,
+td {
+  padding: 12px;
+  border-bottom: 1px solid #334155;
+  text-align: center;
+}
+
+th {
+  background: #020617;
+  font-size: 13px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+tr:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* STATUS BADGES */
+.status {
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 12px;
+}
+
+.delivered {
+  background: rgba(34, 197, 94, 0.2);
+  color: #22c55e;
+}
+
+.pending {
+  background: rgba(239, 68, 68, 0.2);
+  color: #ef4444;
+}
+
+/* BUTTONS */
+button {
+  padding: 6px 12px;
+  margin: 2px;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  transition: all 0.25s ease;
+}
+
+/* DELIVERY BUTTON */
+button[name="update_delivery"] {
+  background: linear-gradient(135deg, #fbbf24, #f59e0b);
+  color: black;
+}
+
+button[name="update_delivery"]:hover {
+  transform: scale(1.05);
+  box-shadow: 0 0 10px rgba(251, 191, 36, 0.5);
+}
+
+/* PAYMENT BUTTON */
+button[name="update_payment"] {
+  background: linear-gradient(135deg, #22c55e, #16a34a);
+}
+
+button[name="update_payment"]:hover {
+  transform: scale(1.05);
+  box-shadow: 0 0 10px rgba(34, 197, 94, 0.5);
+}
+
+/* CLICK EFFECT */
+button:active {
+  transform: scale(0.95);
+}
+
+/* DISABLED BUTTON */
+button:disabled {
+  background: #475569;
+  cursor: not-allowed;
+  opacity: 0.6;
+}

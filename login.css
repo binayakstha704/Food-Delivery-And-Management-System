@@ -1,0 +1,108 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  font-family: "Poppins", sans-serif;
+}
+
+body {
+  height: 100vh;
+  background: linear-gradient(135deg, #0f2027, #203a43, #2c5364);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+/* CONTAINER */
+.container {
+  width: 100%;
+  max-width: 380px;
+  padding: 20px;
+}
+
+/* GLASS CARD */
+.login-box {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 20px;
+  padding: 30px;
+  backdrop-filter: blur(12px);
+  box-shadow: 0 0 30px rgba(0, 0, 0, 0.5);
+  text-align: center;
+  color: #fff;
+}
+
+/* TITLE */
+.login-box h2 {
+  margin-bottom: 5px;
+}
+
+.subtitle {
+  font-size: 12px;
+  color: #ccc;
+  margin-bottom: 20px;
+}
+
+/* ERROR */
+.error {
+  background: rgba(255, 0, 0, 0.2);
+  padding: 10px;
+  border-radius: 8px;
+  margin-bottom: 15px;
+  font-size: 13px;
+}
+
+/* INPUT */
+.input-box {
+  position: relative;
+  margin-bottom: 15px;
+}
+
+.input-box span {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.input-box input {
+  width: 100%;
+  padding: 12px 40px;
+  border-radius: 10px;
+  border: none;
+  outline: none;
+}
+
+/* TOGGLE BUTTON */
+.input-box button {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+/* BUTTON */
+.btn {
+  width: 100%;
+  padding: 12px;
+  border-radius: 10px;
+  border: none;
+  background: linear-gradient(45deg, #00c6ff, #0072ff);
+  color: white;
+  font-weight: bold;
+  cursor: pointer;
+  transition: 0.3s;
+}
+
+.btn:hover {
+  box-shadow: 0 0 15px #00c6ff;
+}
+
+/* DEMO */
+.demo {
+  margin-top: 15px;
+  font-size: 12px;
+  color: #aaa;
+}
