@@ -1,4 +1,5 @@
 <?php
+session_start();
 include "../config/db.php";
 
 $message = "";
@@ -11,29 +12,40 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $email     = trim($_POST['email']);
     $password  = $_POST['password'];
 
-    $hashed_password = password_hash($password, PASSWORD_DEFAULT);
-
-    // CHECK DUPLICATE
-    $check = $conn->prepare("SELECT id FROM users WHERE username=? OR email=?");
-    $check->bind_param("ss", $username, $email);
-    $check->execute();
-    $check->store_result();
-
-    if ($check->num_rows > 0) {
-        $message = "⚠️ Username or Email already exists!";
+    // ✅ VALIDATION
+    if (empty($firstname) || empty($lastname) || empty($username) || empty($email) || empty($password)) {
+        $message = "All fields are required!";
+    } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        $message = "Invalid email format!";
+    } elseif (strlen($password) < 8) {
+        $message = "Password must be at least 8 characters!";
     } else {
 
-        $stmt = $conn->prepare("INSERT INTO users (firstname, lastname, username, email, password) VALUES (?, ?, ?, ?, ?)");
-        $stmt->bind_param("sssss", $firstname, $lastname, $username, $email, $hashed_password);
+        $hashed_password = password_hash($password, PASSWORD_DEFAULT);
 
-        if ($stmt->execute()) {
-            $message = "✅ Registration Successful!";
+        // ✅ CHECK DUPLICATE (UPDATED TABLE NAME)
+        $check = $conn->prepare("SELECT id FROM customers WHERE username=? OR email=?");
+        $check->bind_param("ss", $username, $email);
+        $check->execute();
+        $check->store_result();
+
+        if ($check->num_rows > 0) {
+            $message = "Username or Email already exists!";
         } else {
-            $message = "❌ Error: " . $stmt->error;
+
+            // ✅ INSERT USER (UPDATED TABLE NAME)
+            $stmt = $conn->prepare("INSERT INTO customers (firstname, lastname, username, email, password, role) VALUES (?, ?, ?, ?, ?, 'user')");
+            $stmt->bind_param("sssss", $firstname, $lastname, $username, $email, $hashed_password);
+
+            if ($stmt->execute()) {
+                header("Location: login.php?success=1");
+                exit();
+            } else {
+                $message = "Error: " . $stmt->error;
+            }
         }
     }
 }
-
 ?>
 
 <!DOCTYPE html>
