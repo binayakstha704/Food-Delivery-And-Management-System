@@ -1,6 +1,6 @@
 <?php
 session_start();
-include('db1.php');
+include('../config/db1.php');
 
 $error = "";
 

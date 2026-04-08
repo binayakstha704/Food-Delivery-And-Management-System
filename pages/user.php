@@ -1,5 +1,5 @@
 <?php
-include "db.php";
+include "../config/db.php";
 
 $message = "";
 
@@ -48,7 +48,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet"/>
 
 <!-- External CSS -->
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="../assests/style.css">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 
 </head>
@@ -61,7 +61,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
 <div class="container">
     <div class="reg-logo-circle">
-    <img src="logo.png.png" alt="Swaad Unlimited Logo">
+    <img src="../logo.png.png" alt="Swaad Unlimited Logo">
 </div>
 
     <!-- Branding -->
