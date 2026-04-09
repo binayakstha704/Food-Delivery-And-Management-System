@@ -12,7 +12,7 @@ if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'chef') {
 $menuCount = mysqli_fetch_row(mysqli_query($conn, "SELECT COUNT(*) FROM foods"))[0];
 $pendingOrders = mysqli_fetch_row(mysqli_query($conn, "SELECT COUNT(*) FROM orders WHERE status='Pending'"))[0] ?? 0;
 $preparingOrders = mysqli_fetch_row(mysqli_query($conn, "SELECT COUNT(*) FROM orders WHERE status='Preparing'"))[0] ?? 0;
-$completedToday = mysqli_fetch_row(mysqli_query($conn, "SELECT COUNT(*) FROM orders WHERE status='Delivered' AND DATE(created_at)=CURDATE()"))[0] ?? 0;
+$completedToday = mysqli_fetch_row(mysqli_query($conn, "SELECT COUNT(*) FROM orders WHERE status='Delivered' AND DATE(updated_at)=CURDATE()"))[0] ?? 0;
 
 // --- FETCH RECENT ORDERS ---
 $ordersRes = mysqli_query($conn, "SELECT * FROM orders ORDER BY id DESC LIMIT 10");
