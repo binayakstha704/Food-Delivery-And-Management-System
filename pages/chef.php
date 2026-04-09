@@ -6,7 +6,7 @@ include('../config/db1.php');
 if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'chef') {
     header("Location: pages/login.php");
     exit();
-}
+} 
 
 // --- FETCH STATS ---
 $menuCount = mysqli_fetch_row(mysqli_query($conn, "SELECT COUNT(*) FROM foods"))[0];
