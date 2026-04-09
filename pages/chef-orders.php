@@ -51,6 +51,9 @@ $notifCount = mysqli_fetch_row(mysqli_query($conn, "SELECT COUNT(*) FROM orders 
         .status-form select { padding: 5px 8px; border-radius: 6px; border: 1px solid #ddd; font-size: 13px; font-family: 'Poppins', sans-serif; }
         .update-btn { padding: 5px 12px; background: var(--bright-orange, #e67e22); color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; }
         .update-btn:hover { opacity: 0.85; }
+
+        /* ✅ PRINT STYLES - Only table exports */
+      
     </style>
 </head>
 <body>
@@ -148,7 +151,7 @@ $notifCount = mysqli_fetch_row(mysqli_query($conn, "SELECT COUNT(*) FROM orders 
                         <th>Items</th>
                         <th>Date</th>
                         <th>Current Status</th>
-                        <th>Update Status</th>
+                        <th class="no-print">Update Status</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -162,7 +165,7 @@ $notifCount = mysqli_fetch_row(mysqli_query($conn, "SELECT COUNT(*) FROM orders 
                         <td><?php echo htmlspecialchars($order['items'] ?? 'N/A'); ?></td>
                         <td class="timestamp"><?php echo $order['created_at'] ?? '—'; ?></td>
                         <td><span class="badge <?php echo $sc; ?>"><?php echo $order['status']; ?></span></td>
-                        <td>
+                        <td class="no-print">
                             <form method="POST" action="chef-orders.php" class="status-form">
                                 <input type="hidden" name="order_id" value="<?php echo $order['id']; ?>">
                                 <select name="status">
