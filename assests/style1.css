@@ -268,10 +268,6 @@ form.filter-bar {
 }
 
 /* Prevent unwanted color changes to global sidebar links */
-.sidebar .nav-links li a {
-  /* Keeps your existing sidebar colors */
-}
-
 /* Specific styling for the log table container to prevent overflow */
 .table-container {
   background: white;
