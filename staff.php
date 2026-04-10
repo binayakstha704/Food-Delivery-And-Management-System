@@ -38,12 +38,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Herald Canteen — Staff Login</title>
-<link rel="stylesheet" href="login.css">
+<link rel="stylesheet" href="staaff.css">
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700;900&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet">
 </head>
-<body>
+<body class="login-body">
+  
 
-<!-- Floating orbs -->
+
 <div class="orb orb-1"></div>
 <div class="orb orb-2"></div>
 <div class="orb orb-3"></div>
@@ -56,7 +57,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <div class="corner corner-br"></div>
 
         <!-- Logo mark -->
-        <div class="logo-mark">🌿</div>
+        <!-- Replace this: -->
+
+
+<!-- With this: -->
+<div class="logo-mark">
+    <img src="Canteen.PNG" alt="Herald Canteen" style="height:48px;width:auto;border-radius:8px;">
+</div>
 
         <!-- Brand -->
         <div class="brand-name">Herald Canteen</div>

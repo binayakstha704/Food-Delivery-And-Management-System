@@ -59,9 +59,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>User Registration</title>
+<title>Herald Canteen - Register</title>
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet"/>
-<link rel="stylesheet" href="../assests/style.css">
+<link rel="stylesheet" href="../assests/Heraldcanteen.css">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 </head>
 
@@ -73,15 +73,15 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
     <div class="container">
         <div class="reg-logo-circle">
-            <img src="../logo.png.png" alt="Swaad Unlimited Logo">
+            <img src="../Canteen.PNG" alt="Swaad Unlimited Logo">
         </div>
 
         <div class="logo">
-            <span class="brand">
-                <span class="swaad">Swaad</span>
-                <span class="unlimited">Unlimited</span>
+            <span class="brand-text">
+  HERALD <span>CANTEEN</span>
+                
             </span>
-            <small>Delicious Food Will Light Up Your Mood</small>
+            <small>Herald College Kathmandu </small>
         </div>
 
         <div class="card">

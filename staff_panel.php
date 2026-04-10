@@ -46,13 +46,16 @@ foreach ($orders as $o) {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Herald Canteen — Staff Panel</title>
-<link rel="stylesheet" href="panel.css">
+<link rel="stylesheet" href="staaff.css">
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
 
 <header class="top">
-    <h2>🌿 Herald Canteen</h2>
+    <div class="logo-mark">
+    <img src="Canteen.PNG" alt="Herald Canteen" style="height:48px;width:auto;border-radius:8px;">
+</div>
+    <h2> Herald Canteen</h2>
     <div>
         <span>👤 <?= htmlspecialchars($_SESSION['staff_name']) ?></span>
         <a href="?logout=1" class="logout">⬡ Logout</a>

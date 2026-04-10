@@ -41,28 +41,19 @@ $notifCount = mysqli_fetch_row(mysqli_query($conn, "SELECT COUNT(*) FROM orders 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="../assests/style1.css">
+    <link rel="stylesheet" href="../assests/Heraldcanteen.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet"/>
-    <title>Swaad Unlimited - Order Status</title>
-    <style>
-        .notif-badge { background: #e74c3c; color: white; border-radius: 50%; padding: 1px 6px; font-size: 11px; margin-left: 4px; }
-        .status-form { display: inline-flex; gap: 6px; align-items: center; }
-        .status-form select { padding: 5px 8px; border-radius: 6px; border: 1px solid #ddd; font-size: 13px; font-family: 'Poppins', sans-serif; }
-        .update-btn { padding: 5px 12px; background: var(--bright-orange, #e67e22); color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; }
-        .update-btn:hover { opacity: 0.85; }
-
-        /* ✅ PRINT STYLES - Only table exports */
-      
-    </style>
+    <title>Herald Canteen - Order Status</title>
 </head>
 <body>
     <div class="sidebar">
         <div class="logo-section">
-            <img src="../logo.png.png" alt="Logo">
+            <img src="../Canteen.PNG" alt="Logo">
             <div>
-                <span style="font-family:'Playfair Display',serif;font-size:1.2rem;color:var(--peach);">Swaad</span><span style="font-family:'Playfair Display',serif;font-size:1.2rem;color:var(--bright-orange);">Unlimited</span>
-                <small>Chef Panel</small>
+                <span class="brand-text">
+  HERALD <span>CANTEEN</span>
+</span>
             </div>
         </div>
         <ul class="nav-links">
@@ -75,7 +66,7 @@ $notifCount = mysqli_fetch_row(mysqli_query($conn, "SELECT COUNT(*) FROM orders 
     <div class="main-content">
         <div class="top-nav">
             <div class="left-section">
-                <img src="../logo.png.png" alt="Logo" class="nav-logo">
+                <img src="../Canteen.PNG" alt="Logo" class="nav-logo">
                 <h2 class="nav-title">Chef Panel</h2>
             </div>
             <div class="right-section">
