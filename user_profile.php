@@ -1,6 +1,5 @@
 <?php
 // user_profile.php — Herald Canteen
-// Displays logged-in user info. Allows inline editing of name and phone.
 
 session_start();
 require_once 'db.php';
