@@ -183,7 +183,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$already_chef) {
             </p>
 
             <p class="login-security-note">
-                🔒 Restricted to verified chef accounts only.<br>
+                chef accounts only.<br>
                 5 failed attempts triggers a 10-minute lockout.
             </p>
 
