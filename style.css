@@ -440,9 +440,6 @@ img { max-width: 100%; display: block; }
 .status-step.active .status-label { color: var(--green-dark); }
 
 
-/* ============================================================
-   TABS
-   ============================================================ */
 .tabs {
     display: flex;
     gap: 4px;
