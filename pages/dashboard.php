@@ -2,15 +2,17 @@
 session_start();
 require '../config/db.php';
 
-if (!isset($_SESSION['user_id'])) {
-    header('Location: login.php');
-    exit;
+$is_logged_in = isset($_SESSION['user_id']);
+
+if ($is_logged_in) {
+    $user_id = $_SESSION['user_id'];
+    $name    = $_SESSION['full_name'];
+} else {
+    $user_id = null;
+    $name    = 'Guest';
 }
 
-$user_id = $_SESSION['user_id'];
-$name    = $_SESSION['full_name'];
-
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['item_id'])) {
+if ($is_logged_in && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['item_id'])) {
     $item_id = (int)$_POST['item_id'];
 
     $stmt = $conn->prepare("SELECT cart_id, quantity FROM cart WHERE user_id = ? AND item_id = ?");
@@ -59,15 +61,21 @@ if ($search !== '') {
     $categories_result = $conn->query("SELECT * FROM categories WHERE is_available = 1");
 }
 
-$stmt = $conn->prepare("SELECT SUM(quantity) as total FROM cart WHERE user_id = ?");
-$stmt->bind_param("i", $user_id);
-$stmt->execute();
-$cart_count = $stmt->get_result()->fetch_assoc()['total'] ?? 0;
+$cart_count = 0;
+if ($is_logged_in) {
+    $stmt = $conn->prepare("SELECT SUM(quantity) as total FROM cart WHERE user_id = ?");
+    $stmt->bind_param("i", $user_id);
+    $stmt->execute();
+    $cart_count = $stmt->get_result()->fetch_assoc()['total'] ?? 0;
+}
 
-$stmt = $conn->prepare("SELECT COUNT(*) as count FROM notifications WHERE user_id = ? AND is_read = 0");
-$stmt->bind_param("i", $user_id);
-$stmt->execute();
-$notif_count = $stmt->get_result()->fetch_assoc()['count'] ?? 0;
+$notif_count = 0;
+if ($is_logged_in) {
+    $stmt = $conn->prepare("SELECT COUNT(*) as count FROM notifications WHERE user_id = ? AND is_read = 0");
+    $stmt->bind_param("i", $user_id);
+    $stmt->execute();
+    $notif_count = $stmt->get_result()->fetch_assoc()['count'] ?? 0;
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -76,6 +84,12 @@ $notif_count = $stmt->get_result()->fetch_assoc()['count'] ?? 0;
     <title>Dashboard</title>
     <link rel="stylesheet" href="../assets/css/dashboard.css">
 </head>
+<script>
+function requireLogin() {
+    alert("You must login first to access this feature.");
+    window.location.href = "login.php";
+}
+</script>
 <body>
 
 <div class="layout">
@@ -84,14 +98,23 @@ $notif_count = $stmt->get_result()->fetch_assoc()['count'] ?? 0;
         <h3>Herald Canteen</h3>
         <nav>
             <a href="dashboard.php" class="active">Home</a>
-            <a href="cart.php">
+
+            <a href="<?php echo $is_logged_in ? 'cart.php' : 'login.php'; ?>">
                 My Cart
                 <?php if ($cart_count > 0): ?>
                     <span class="badge"><?php echo $cart_count; ?></span>
                 <?php endif; ?>
             </a>
-            <a href="orders.php">My Orders</a>
-            <a href="logout.php">Logout</a>
+
+            <a href="<?php echo $is_logged_in ? 'orders.php' : 'login.php'; ?>">
+                My Orders
+            </a>
+
+            <?php if ($is_logged_in): ?>
+                <a href="logout.php">Logout</a>
+            <?php else: ?>
+                <a href="login.php">Login / Signup</a>
+            <?php endif; ?>
         </nav>
     </div>
 
@@ -103,12 +126,15 @@ $notif_count = $stmt->get_result()->fetch_assoc()['count'] ?? 0;
                     value="<?php echo htmlspecialchars($search); ?>">
                 <button type="submit">Search</button>
             </form>
+
+            <?php if ($is_logged_in): ?>
             <a href="notifications.php" class="notif-wrap">
                 <span>🔔</span>
                 <?php if ($notif_count > 0): ?>
                     <span class="notif-badge"><?php echo $notif_count; ?></span>
                 <?php endif; ?>
             </a>
+            <?php endif; ?>
         </div>
 
         <div class="content">
@@ -119,13 +145,19 @@ $notif_count = $stmt->get_result()->fetch_assoc()['count'] ?? 0;
 
             <div class="section-title">
                 <h2>Our Special</h2>
-                <p>Hello <?php echo htmlspecialchars($name); ?>, what are you craving today?</p>
+                <p>
+                    <?php if ($is_logged_in): ?>
+                        Hello <?php echo htmlspecialchars($name); ?>, what are you craving today?
+                    <?php else: ?>
+                        Browse our menu — login to order!
+                    <?php endif; ?>
+                </p>
             </div>
 
             <div class="category-grid">
                 <?php if ($categories_result && $categories_result->num_rows > 0): ?>
                     <?php while ($cat = $categories_result->fetch_assoc()): ?>
-                        <a href="dashboard.php?cat_id=<?php echo $cat['category_id']; ?>" class="category-card">
+                        <a href="<?php echo $is_logged_in ? 'dashboard.php?cat_id=' . $cat['category_id'] : 'javascript:requireLogin()'; ?>" class="category-card">
                             <div class="cat-img-wrap">
                                 <img src="<?php echo htmlspecialchars($cat['image_url'] ?: '../assets/images/default.jpg'); ?>" alt="<?php echo htmlspecialchars($cat['name']); ?>">
                             </div>
@@ -169,10 +201,16 @@ $notif_count = $stmt->get_result()->fetch_assoc()['count'] ?? 0;
                             <p><?php echo htmlspecialchars($item['description']); ?></p>
                             <span class="price">Rs. <?php echo number_format($item['price'], 2); ?></span>
                         </div>
+
+                        <?php if ($is_logged_in): ?>
                         <form method="POST" action="dashboard.php?cat_id=<?php echo $popup_category['category_id']; ?>">
                             <input type="hidden" name="item_id" value="<?php echo $item['item_id']; ?>">
-                            <button type="submit" class="add-btn">Add to Cart</button>
+                            <button type="submit" class="add-btn">Add to Bag</button>
                         </form>
+                        <?php else: ?>
+                            <a href="login.php" class="add-btn">Add to Bag</a>
+                        <?php endif; ?>
+
                     </div>
                 <?php endforeach; ?>
             <?php else: ?>
