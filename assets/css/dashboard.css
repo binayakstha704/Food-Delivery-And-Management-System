@@ -6,7 +6,8 @@
 
 body {
   font-family: "Segoe UI", sans-serif;
-  background: #f9f9f9;
+  background: #181818;
+  color: #ffffff;
 }
 
 .layout {
@@ -16,7 +17,7 @@ body {
 
 .sidebar {
   width: 220px;
-  background: #1a1a1a;
+  background: #2e2e2e;
   color: white;
   padding: 30px 20px;
   display: flex;
@@ -27,11 +28,12 @@ body {
   left: 0;
   height: 100vh;
   z-index: 10;
+  border-right: 1px solid rgba(77, 184, 72, 0.1);
 }
 
 .sidebar h3 {
   font-size: 22px;
-  color: #f97316;
+  color: #4db848;
 }
 
 .sidebar nav {
@@ -41,7 +43,7 @@ body {
 }
 
 .sidebar nav a {
-  color: #aaa;
+  color: rgba(255, 255, 255, 0.45);
   text-decoration: none;
   font-size: 14px;
   padding: 10px 14px;
@@ -54,12 +56,13 @@ body {
 
 .sidebar nav a:hover,
 .sidebar nav a.active {
-  background: #2a2a2a;
-  color: white;
+  background: rgba(77, 184, 72, 0.1);
+  color: #4db848;
+  border: 1px solid rgba(77, 184, 72, 0.15);
 }
 
 .badge {
-  background: #f97316;
+  background: #4db848;
   color: white;
   font-size: 11px;
   padding: 2px 8px;
@@ -75,8 +78,9 @@ body {
 
 .topbar {
   padding: 16px 30px;
-  background: white;
-  border-bottom: 1px solid #eee;
+  background: rgba(24, 24, 24, 0.85);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid rgba(77, 184, 72, 0.1);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -92,43 +96,58 @@ body {
 
 .search-form input {
   padding: 10px 16px;
-  border: 1px solid #ddd;
+  border: 1.5px solid #3a3a3a;
   border-radius: 8px;
   font-size: 14px;
   width: 280px;
   outline: none;
+  background: #242424;
+  color: #ffffff;
   transition: border 0.2s;
 }
 
+.search-form input::placeholder {
+  color: #555555;
+}
+
 .search-form input:focus {
-  border-color: #f97316;
+  border-color: #4db848;
+  box-shadow: 0 0 0 3px rgba(77, 184, 72, 0.12);
+  background: #2a2a2a;
 }
 
 .search-form button {
   padding: 10px 20px;
-  background: #f97316;
+  background: #4db848;
   color: white;
   border: none;
   border-radius: 8px;
   cursor: pointer;
   font-size: 14px;
+  transition: background 0.2s;
 }
 
 .search-form button:hover {
-  background: #ea6c0a;
+  background: #3a9236;
 }
 
 .notif-wrap {
   position: relative;
   text-decoration: none;
   font-size: 24px;
+  color: rgba(255, 255, 255, 0.55);
+  transition: color 0.2s;
+}
+
+.notif-wrap:hover {
+  color: #4db848;
 }
 
 .notif-badge {
   position: absolute;
   top: -4px;
   right: -6px;
-  background: red;
+  background: #e53935;
   color: white;
   font-size: 10px;
   padding: 2px 5px;
@@ -140,8 +159,9 @@ body {
 }
 
 .alert {
-  background: #dcfce7;
-  color: #166534;
+  background: rgba(77, 184, 72, 0.1);
+  color: #6dcc68;
+  border: 1px solid rgba(77, 184, 72, 0.3);
   padding: 12px 16px;
   border-radius: 8px;
   margin-bottom: 20px;
@@ -151,7 +171,7 @@ body {
 .section-title h2 {
   font-size: 30px;
   font-weight: 700;
-  color: #2c2c2c;
+  color: #ffffff;
   font-family: "Poppins", "Segoe UI", sans-serif;
   letter-spacing: 0.5px;
 }
@@ -165,7 +185,7 @@ body {
   margin-bottom: 20px;
   font-size: 15px;
   font-weight: 600;
-  color: #df7905;
+  color: #4db848;
   font-family: "Poppins", "Segoe UI", sans-serif;
   letter-spacing: 0.3px;
 }
@@ -177,28 +197,31 @@ body {
 }
 
 .category-card {
-  background: white;
+  background: #212121;
+  border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: 14px;
   overflow: hidden;
   text-decoration: none;
   color: inherit;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.07);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
   transition:
     transform 0.2s,
-    box-shadow 0.2s;
+    box-shadow 0.2s,
+    border-color 0.2s;
   display: block;
 }
 
 .category-card:hover {
   transform: translateY(-5px);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  border-color: rgba(77, 184, 72, 0.25);
 }
 
 .cat-img-wrap {
   width: 100%;
   height: 180px;
   overflow: hidden;
-  background: #eee;
+  background: #2a2a2a;
 }
 
 .cat-img-wrap img {
@@ -214,19 +237,19 @@ body {
 
 .cat-label h4 {
   font-size: 16px;
-  color: #1a1a1a;
+  color: #ffffff;
   margin-bottom: 5px;
   font-weight: 600;
 }
 
 .cat-label p {
   font-size: 12px;
-  color: #888;
+  color: rgba(255, 255, 255, 0.4);
   line-height: 1.5;
 }
 
 .no-result {
-  color: #888;
+  color: rgba(255, 255, 255, 0.3);
   font-size: 15px;
   grid-column: 1 / -1;
 }
@@ -236,22 +259,24 @@ body {
 .popup-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.65);
+  background: rgba(0, 0, 0, 0.75);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 100;
   padding: 20px;
+  backdrop-filter: blur(4px);
 }
 
 .popup {
-  background: white;
+  background: #2a2a2a;
+  border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 16px;
   width: 520px;
   max-height: 85vh;
   overflow-y: auto;
   position: relative;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
 }
 
 .popup-banner {
@@ -264,18 +289,18 @@ body {
 
 .popup-header-text {
   padding: 18px 22px 14px;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .popup-header-text h2 {
   font-size: 21px;
-  color: #1a1a1a;
+  color: #ffffff;
   margin-bottom: 5px;
 }
 
 .popup-header-text p {
   font-size: 13px;
-  color: #888;
+  color: rgba(255, 255, 255, 0.4);
   line-height: 1.5;
 }
 
@@ -285,7 +310,7 @@ body {
 
 .popup-items h3 {
   font-size: 11px;
-  color: #bbb;
+  color: rgba(77, 184, 72, 0.7);
   margin-bottom: 12px;
   font-weight: 700;
   text-transform: uppercase;
@@ -298,7 +323,7 @@ body {
   justify-content: space-between;
   gap: 14px;
   padding: 13px 0;
-  border-bottom: 1px solid #f5f5f5;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 .popup-item:last-child {
@@ -311,27 +336,27 @@ body {
 
 .popup-item-info h4 {
   font-size: 14px;
-  color: #1a1a1a;
+  color: #ffffff;
   margin-bottom: 3px;
   font-weight: 600;
 }
 
 .popup-item-info p {
   font-size: 12px;
-  color: #999;
+  color: rgba(255, 255, 255, 0.4);
   line-height: 1.4;
   margin-bottom: 5px;
 }
 
 .popup-item-info .price {
   font-size: 14px;
-  color: #f97316;
+  color: #4db848;
   font-weight: 700;
 }
 
 .add-btn {
   padding: 8px 16px;
-  background: #f97316;
+  background: #4db848;
   color: white;
   border: none;
   border-radius: 8px;
@@ -340,17 +365,19 @@ body {
   white-space: nowrap;
   flex-shrink: 0;
   transition: background 0.2s;
+  box-shadow: 0 4px 12px rgba(77, 184, 72, 0.25);
 }
 
 .add-btn:hover {
-  background: #ea6c0a;
+  background: #3a9236;
 }
 
 .close-btn {
   position: absolute;
   top: 12px;
   right: 12px;
-  background: white;
+  background: #2a2a2a;
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 50%;
   width: 32px;
   height: 32px;
@@ -359,14 +386,16 @@ body {
   justify-content: center;
   font-size: 14px;
   text-decoration: none;
-  color: #333;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  color: rgba(255, 255, 255, 0.7);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
   z-index: 101;
 }
 
 .close-btn:hover {
-  background: #f5f5f5;
+  background: #3a3a3a;
+  color: #ffffff;
 }
+
 a {
   text-decoration: none;
 }
