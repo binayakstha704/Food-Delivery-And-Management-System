@@ -1,84 +1,105 @@
 <?php
 session_start();
-require '../config/db.php';
+include('../config/db1.php');
 
-$error   = '';
-$success = '';
+$error = "";
 
-if (isset($_SESSION['user_id'])) {
-    header('Location: dashboard.php');
-    exit;
-}
+if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $email    = trim($_POST['email']);
-    $password = trim($_POST['password']);
+    $username = $_POST['username'] ?? '';
+    $password = $_POST['password'] ?? '';
 
-    if (empty($email) || empty($password)) {
-        $error = 'Please fill in all fields.';
-    } else {
-        $stmt = $conn->prepare("SELECT * FROM users WHERE email = ?");
-        $stmt->bind_param("s", $email);
-        $stmt->execute();
-        $user = $stmt->get_result()->fetch_assoc();
+    // ✅ Use username (NOT email)
+    $query = "SELECT * FROM users WHERE username='$username' LIMIT 1";
+    $result = mysqli_query($conn, $query);
 
-        if ($user && password_verify($password, $user['password_hash'])) {
-            $_SESSION['user_id']   = $user['user_id'];
-            $_SESSION['full_name'] = $user['full_name'];
-            $_SESSION['role']      = $user['role'];
-            header('Location: dashboard.php');
-            exit;
+    if ($result && mysqli_num_rows($result) > 0) {
+
+        $user = mysqli_fetch_assoc($result);
+
+        // ✅ Correct password verification (hashed)
+        if (password_verify($password, $user['password'])) {
+
+            $_SESSION['role'] = $user['role'];
+            $_SESSION['user_id'] = $user['id'];
+
+            // ✅ Redirect based on role
+            if ($user['role'] == 'chef') {
+                header("Location: chef.php");
+                exit();
+            } elseif ($user['role'] == 'admin') {
+                header("Location: admin.php");
+                exit();
+            } else {
+                header("Location: index.php");
+                exit();
+            }
+
         } else {
-            $error = 'Invalid email or password.';
+            $error = "Invalid password!";
         }
+
+    } else {
+        $error = "User not found!";
     }
 }
 ?>
+
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
     <title>Login</title>
-    <link rel="stylesheet" href="../assets/css/login.css">
+    <style>
+        body {
+            font-family: Arial;
+            background: #f4f4f4;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+        .login-box {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            width: 300px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        input {
+            width: 100%;
+            padding: 10px;
+            margin: 8px 0;
+        }
+        button {
+            width: 100%;
+            padding: 10px;
+            background: orange;
+            border: none;
+            color: white;
+            cursor: pointer;
+        }
+        .error {
+            color: red;
+            font-size: 14px;
+        }
+    </style>
 </head>
 <body>
 
-<div class="container">
-    <div class="login-box">
-        <div class="logo">
-            <h1>Herald <span>Canteen</span></h1>
-            <p>Welcome Back</p>
-        </div>
+<div class="login-box">
+    <h2>Login</h2>
 
-        <?php if ($error): ?>
-            <div class="alert error">⚠️ <?php echo htmlspecialchars($error); ?></div>
-        <?php endif; ?>
+    <?php if ($error): ?>
+        <p class="error"><?php echo $error; ?></p>
+    <?php endif; ?>
 
-        <form method="POST" class="login-form">
-            <div class="input-group">
-                <label>Email Address</label>
-                <div class="input-wrapper">
-                    <span class="input-icon">📧</span>
-                    <input type="email" name="email" placeholder="Enter your email"
-                        value="<?php echo htmlspecialchars($_POST['email'] ?? ''); ?>" required>
-                </div>
-            </div>
-
-            <div class="input-group">
-                <label>Password</label>
-                <div class="input-wrapper">
-                    <span class="input-icon">🔒</span>
-                    <input type="password" name="password" placeholder="Enter your password" required>
-                </div>
-            </div>
-
-            <button type="submit" class="login-btn">Login</button>
-        </form>
-
-        <div class="register-link">
-            <p>Don't have an account? <a href="register.php">Create Account</a></p>
-        </div>
-    </div>
+    <!-- ✅ Username instead of email -->
+    <form method="POST">
+        <input type="text" name="username" placeholder="Enter Username" required>
+        <input type="password" name="password" placeholder="Enter Password" required>
+        <button type="submit">Login</button>
+    </form>
 </div>
+
 </body>
 </html>
