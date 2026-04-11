@@ -1,136 +1,94 @@
 <?php
-include "db1.php";
+session_start();
 
-$message = "";
-
-if ($_SERVER["REQUEST_METHOD"] == "POST") {
-
-    $firstname = trim($_POST['firstname']);
-    $lastname  = trim($_POST['lastname']);
-    $username  = trim($_POST['username']);
-    $email     = trim($_POST['email']);
-    $password  = $_POST['password'];
-
-    $hashed_password = password_hash($password, PASSWORD_DEFAULT);
-
-    // CHECK DUPLICATE
-    $check = $conn->prepare("SELECT id FROM users WHERE username=? OR email=?");
-    $check->bind_param("ss", $username, $email);
-    $check->execute();
-    $check->store_result();
-
-    if ($check->num_rows > 0) {
-        $message = "⚠️ Username or Email already exists!";
-    } else {
-
-        $stmt = $conn->prepare("INSERT INTO users (firstname, lastname, username, email, password) VALUES (?, ?, ?, ?, ?)");
-        $stmt->bind_param("sssss", $firstname, $lastname, $username, $email, $hashed_password);
-
-        if ($stmt->execute()) {
-            $message = "✅ Registration Successful!";
-        } else {
-            $message = "❌ Error: " . $stmt->error;
-        }
-    }
-}
-
+$msg = $_GET['msg'] ?? '';
+$flash_map = [
+    'login_required' => ['type' => 'error',   'text' => 'Please log in to access that page.'],
+    'logged_out'     => ['type' => 'success',  'text' => 'You have been logged out successfully.'],
+];
+$flash = $flash_map[$msg] ?? null;
 ?>
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-<title>User Registration</title>
-
-<!-- Google Fonts -->
-<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet"/>
-
-<!-- External CSS -->
-<link rel="stylesheet" href="style.css">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
-
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Herald Canteen — College Food Ordering System</title>
+    <link rel="stylesheet" href="style.css">
 </head>
-
 <body>
-    <a href="login.php" class="reg-back-btn">
-    <span class="reg-back-arrow">&#8592;</span>
-    <span class="reg-back-text">Back</span>
-</a>
 
-<div class="container">
-    <div class="reg-logo-circle">
-    <img src="logo.png.png" alt="Swaad Unlimited Logo">
-</div>
+<div class="landing-page">
+<div class="landing-inner">
 
-    <!-- Branding -->
-    <div class="logo">
-    <span class="brand">
-        <span class="swaad">Swaad</span>
-        <span class="unlimited">Unlimited</span>
-    </span>
-    <small>Delicious Food Will Light Up Your Mood</small>
-</div>
+    <div class="landing-hero">
+        <img src="Canteen.PNG" alt="Herald Canteen" class="landing-logo">
+        <p class="landing-college">Herald College Kathmandu</p>
+        <h1 class="landing-title">Herald <span>Canteen</span></h1>
+        <p class="landing-tagline">College Food Order &amp; Management System</p>
+    </div>
 
-    <!-- Card -->
-    <div class="card">
-        <h2>Create Account</h2>
-         <?php if($message != ""): ?>
-    <div id="reg-popup" class="reg-popup-overlay">
-        <div class="reg-popup-box <?php echo (strpos($message, 'Successful') !== false) ? 'reg-popup-success' : 'reg-popup-error'; ?>">
-            <div class="reg-popup-icon">
-                <?php echo (strpos($message, 'Successful') !== false) ? '' : ''; ?>
-            </div>
-            <div class="reg-popup-msg"><?php echo $message; ?></div>
+    <?php if ($flash): ?>
+        <div class="alert alert-<?= $flash['type'] ?>">
+            <?= htmlspecialchars($flash['text']) ?>
         </div>
+    <?php endif; ?>
+
+    <div class="sprint-banner">
+        <span class="sprint-badge">Sprint 1</span>
+        <span>Demo mode.</span>
     </div>
 
-    <script>
-        const popup = document.getElementById('reg-popup');
-        if (popup) {
-            setTimeout(() => {
-                popup.classList.add('reg-popup-hide');
-                setTimeout(() => popup.remove(), 300);
-            }, 1500);
-        }
-    </script>
+    <p class="section-title">My Pages &nbsp;·&nbsp; SCRUM SR</p>
 
-<?php endif; ?>
-
-        <form method="POST">
-
-            <div class="input-group">
-                <label>First Name</label>
-                <input type="text" name="firstname" required>
-            </div>
-
-            <div class="input-group">
-                <label>Last Name</label>
-                <input type="text" name="lastname" required>
-            </div>
-
-            <div class="input-group">
-                <label>Unique Username</label>
-                <input type="text" name="username" required>
-            </div>
-
-            <div class="input-group">
-                <label>Email Address</label>
-                <input type="email" name="email" required>
-            </div>
-
-            <div class="input-group">
-                <label>Password</label>
-                <input type="password" name="password" required>
-            </div>
-
-            <button type="submit">Sign Up</button>
-
-        </form>
-
+    <div class="pages-grid">
+        <a href="chef_login.php" class="page-card">
+            <div class="page-card-icon">👨‍🍳</div>
+            <div class="page-card-name">Chef Login</div>
+            <div class="page-card-desc"></div>
+            <div class="page-card-file">chef_login.php</div>
+        </a>
+        <a href="user_profile.php" class="page-card">
+            <div class="page-card-icon">👤</div>
+            <div class="page-card-name">User Profile</div>
+            <div class="page-card-desc">View &amp; edit profile info, live stats from database</div>
+            <div class="page-card-file">user_profile.php</div>
+        </a>
+        <a href="my_cart.php" class="page-card">
+            <div class="page-card-icon">🛒</div>
+            <div class="page-card-name">My Cart</div>
+            <div class="page-card-desc">DB-driven cart, qty controls</div>
+            <div class="page-card-file">my_cart.php</div>
+        </a>
+        <a href="my_orders.php" class="page-card">
+            <div class="page-card-icon">📋</div>
+            <div class="page-card-name">My Orders</div>
+            <div class="page-card-desc">4-status order tracker, filter tabs &amp; live DB data</div>
+            <div class="page-card-file">my_orders.php</div>
+        </a>
     </div>
 
+    <p class="section-title">Login Portals</p>
+
+    <div class="login-grid">
+        <a href="user_login.php" class="login-card">
+            <div class="login-card-icon">🎓</div>
+            <div class="login-card-name">Student / Staff Login</div>
+            <div class="login-card-desc"></div>
+        </a>
+        <a href="chef_login.php" class="login-card">
+            <div class="login-card-icon">👨‍🍳</div>
+            <div class="login-card-name">Chef Login</div>
+            <div class="login-card-desc"></div>
+        </a>
+    </div>
+
+    <div class="college-footer">
+        <img src="Canteen.PNG" alt="">
+        <span>Herald Canteen &nbsp;·&nbsp; Herald College Kathmandu</span>
+    </div>
+
+</div>
 </div>
 
 </body>
