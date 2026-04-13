@@ -351,6 +351,14 @@ img { max-width: 100%; display: block; }
     gap: 16px;
     margin-bottom: 24px;
 }
+.stat-card-link {
+    display: block;
+    text-decoration: none;
+    color: inherit;
+}
+.stat-card-link:hover {
+    text-decoration: none;
+}
 .stat-card {
     background: var(--white);
     border-radius: var(--radius);
@@ -358,6 +366,17 @@ img { max-width: 100%; display: block; }
     text-align: center;
     box-shadow: var(--shadow);
     border-top: 3px solid var(--green);
+    transition: transform var(--transition), box-shadow var(--transition), border-color var(--transition);
+    cursor: pointer;
+}
+.stat-card:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--shadow-lg);
+    border-top-color: var(--green-dark);
+}
+.stat-card.active-stat {
+    border-top-color: var(--green-dark);
+    box-shadow: 0 8px 24px rgba(77,184,72,0.18);
 }
 .stat-card .stat-val {
     font-family: var(--font-display);
@@ -445,6 +464,7 @@ img { max-width: 100%; display: block; }
     gap: 4px;
     border-bottom: 2px solid var(--border);
     margin-bottom: 24px;
+    flex-wrap: wrap;
 }
 .tab-btn {
     background: none;
