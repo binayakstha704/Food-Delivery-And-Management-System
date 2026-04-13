@@ -95,28 +95,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$already_chef) {
 <div class="login-page">
 
     <?php if ($login_success): ?>
-
-        <div class="login-success-box">
-            <div class="success-icon">👨‍🍳</div>
-            <h2 class="success-title">Welcome, <?= htmlspecialchars($chef_name) ?>!</h2>
-            <p class="success-subtitle">Authenticated as Chef ✓</p>
-
-            <div class="checklist-box">
-                <p class="checklist-label">Sprint 1 · Authentication Checklist</p>
-                <div class="checklist-item">✅ &nbsp;CSRF token validated</div>
-                <div class="checklist-item">✅ &nbsp;Bcrypt password verified</div>
-                <div class="checklist-item">✅ &nbsp;Rate limiting active (5 attempts / 10 min)</div>
-                <div class="checklist-item">✅ &nbsp;Session regenerated on login</div>
-                <div class="checklist-item">✅ &nbsp;Chef role confirmed from database</div>
-                <div class="checklist-item">✅ &nbsp;Non-chef accounts blocked</div>
-                <div class="checklist-item-pending">⏳ &nbsp;Redirect → chef_control.php will connect in Sprint 2</div>
-            </div>
-
-            <p class="success-note">
-                Chef dashboard (chef_control.php) is your teammate's module.<br>
-                It will be linked during final Sprint 2 integration.
-            </p>
-
             <div class="success-actions">
                 <a href="index.php" class="btn btn-primary btn-full">← Back to Main Page</a>
                 <a href="chef_login.php?logout=1" class="btn btn-ghost">Logout Chef Session</a>
