@@ -1,6 +1,6 @@
 <?php
 session_start();
-require '../config/binayakdb.php';
+require '../config/originaldb.php';
 $error   = '';
 $success = '';
 if (isset($_SESSION['user_id'])) {
