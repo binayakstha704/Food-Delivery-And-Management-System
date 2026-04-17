@@ -4,7 +4,7 @@ include('../config/db1.php');
 
 // --- CHEF ACCESS ONLY ---
 if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'chef') {
-    header("Location: pages/login.php");
+    header("Location: chef-login.php");
     exit();
 }
 
@@ -41,7 +41,7 @@ $notifCount = mysqli_fetch_row(mysqli_query($conn, "SELECT COUNT(*) FROM orders 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="../assests/Heraldcanteen.css">
+    <link rel="stylesheet" href="/assets/css/dashboard.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet"/>
     <title>Herald Canteen - Order Status</title>

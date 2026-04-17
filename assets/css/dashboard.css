@@ -1,3 +1,9 @@
+@import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=Syne:wght@600;700;800&display=swap");
+
+:root {
+  --dark: #1c1c1c;
+}
+
 * {
   margin: 0;
   padding: 0;
@@ -5,8 +11,8 @@
 }
 
 body {
-  font-family: "Segoe UI", sans-serif;
-  background: #181818;
+  font-family: "DM Sans", sans-serif;
+  background: var(--dark);
   color: #ffffff;
 }
 
@@ -31,9 +37,24 @@ body {
   border-right: 1px solid rgba(77, 184, 72, 0.1);
 }
 
-.sidebar h3 {
+.sidebar h3,
+.sidebar .navbar-title {
+  font-family: "Syne", "DM Sans", sans-serif;
   font-size: 22px;
+  font-weight: 700;
+  color: #ffffff;
+  letter-spacing: 0.5px;
+  line-height: 1.1;
+}
+
+.sidebar .navbar-title span {
+  display: block;
+  font-size: 11px;
+  font-weight: 500;
   color: #4db848;
+  margin-top: 4px;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
 }
 
 .sidebar nav {
@@ -60,7 +81,22 @@ body {
   color: #4db848;
   border: 1px solid rgba(77, 184, 72, 0.15);
 }
+.profile-link {
+  color: rgba(255, 255, 255, 0.65);
+  font-size: 14px;
+  font-weight: 500;
+  padding: 8px 12px;
+  border-radius: 8px;
+  transition: 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
 
+.profile-link:hover {
+  color: #4db848;
+  background: rgba(77, 184, 72, 0.1);
+}
 .badge {
   background: #4db848;
   color: white;
@@ -134,7 +170,7 @@ body {
 .notif-wrap {
   position: relative;
   text-decoration: none;
-  font-size: 24px;
+  font-size: 20px;
   color: rgba(255, 255, 255, 0.55);
   transition: color 0.2s;
 }
@@ -169,24 +205,21 @@ body {
 }
 
 .section-title h2 {
+  font-family: "Syne", "DM Sans", sans-serif;
   font-size: 30px;
   font-weight: 700;
   color: #ffffff;
-  font-family: "Poppins", "Segoe UI", sans-serif;
-  letter-spacing: 0.5px;
-}
-
-.section-title h2::after {
-  display: none;
+  letter-spacing: 0.3px;
+  line-height: 1.2;
 }
 
 .section-title p {
   margin-top: 10px;
   margin-bottom: 20px;
   font-size: 15px;
-  font-weight: 600;
-  color: #4db848;
-  font-family: "Poppins", "Segoe UI", sans-serif;
+  font-weight: 500;
+  color: rgba(77, 184, 72, 0.85);
+  font-family: "DM Sans", sans-serif;
   letter-spacing: 0.3px;
 }
 
@@ -244,7 +277,7 @@ body {
 
 .cat-label p {
   font-size: 12px;
-  color: rgba(255, 255, 255, 0.4);
+  color: #666666;
   line-height: 1.5;
 }
 
@@ -398,4 +431,98 @@ body {
 
 a {
   text-decoration: none;
+}
+
+/* TOAST */
+
+.toast {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  background: #2a2a2a;
+  border: 1px solid rgba(77, 184, 72, 0.25);
+  border-left: 4px solid #4db848;
+  padding: 16px 18px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 320px;
+  max-width: 380px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
+  z-index: 9999;
+
+  animation: toastIn 0.35s ease forwards;
+}
+
+.toast-hide {
+  animation: toastOut 0.3s ease forwards;
+}
+
+.toast-icon {
+  flex-shrink: 0;
+}
+
+.toast-body {
+  display: flex;
+  flex-direction: column;
+}
+
+.toast-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #ffffff;
+}
+
+.toast-sub {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.5);
+  margin-top: 2px;
+}
+
+.toast-close {
+  margin-left: auto;
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.6);
+  cursor: pointer;
+  font-size: 16px;
+}
+
+.toast-close:hover {
+  color: #fff;
+}
+
+/* animations */
+
+@keyframes toastIn {
+  from {
+    opacity: 0;
+    transform: translateX(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes toastOut {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(30px);
+  }
+}
+.profile-link,
+.profile-link:visited,
+.profile-link:hover,
+.profile-link:active,
+.profile-link:focus {
+  color: #4db848 !important;
+  text-decoration: none !important;
+  font-size: 16px; /* 👈 increase this */
+  font-weight: 600;
 }

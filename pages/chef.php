@@ -4,7 +4,7 @@ include('../config/db1.php');
 
 // --- CHEF ACCESS ONLY ---
 if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'chef') {
-    header("Location: pages/login.php");
+    header("Location: chef-login.php");
     exit();
 } 
 
