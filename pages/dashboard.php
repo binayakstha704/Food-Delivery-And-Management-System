@@ -1,6 +1,6 @@
 <?php
 session_start();
-require '../config/originaldb.php';
+require '../config/db.php';
 
 $is_logged_in = isset($_SESSION['user_id']);
 
@@ -24,19 +24,29 @@ if ($is_logged_in && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['item
     $item_row  = $stmt->get_result()->fetch_assoc();
     $item_name = $item_row['name'] ?? 'Item';
 
+    // Check if item already in cart
     $stmt = $conn->prepare("SELECT cart_id, quantity FROM cart WHERE user_id = ? AND item_id = ?");
     $stmt->bind_param("ii", $user_id, $item_id);
     $stmt->execute();
     $existing = $stmt->get_result()->fetch_assoc();
 
+    // Get item price to calculate total
+    $stmt = $conn->prepare("SELECT price FROM menu_items WHERE item_id = ?");
+    $stmt->bind_param("i", $item_id);
+    $stmt->execute();
+    $price_result = $stmt->get_result()->fetch_assoc();
+    $item_price = $price_result['price'] ?? 0;
+
     if ($existing) {
         $new_qty = $existing['quantity'] + 1;
-        $stmt = $conn->prepare("UPDATE cart SET quantity = ? WHERE cart_id = ?");
-        $stmt->bind_param("ii", $new_qty, $existing['cart_id']);
+        $new_total = $new_qty * $item_price;
+        $stmt = $conn->prepare("UPDATE cart SET quantity = ?, total_price = ? WHERE cart_id = ?");
+        $stmt->bind_param("idi", $new_qty, $new_total, $existing['cart_id']);
         $stmt->execute();
     } else {
-        $stmt = $conn->prepare("INSERT INTO cart (user_id, item_id, quantity) VALUES (?, ?, 1)");
-        $stmt->bind_param("ii", $user_id, $item_id);
+        $total_price = $item_price;
+        $stmt = $conn->prepare("INSERT INTO cart (user_id, item_id, quantity, total_price) VALUES (?, ?, 1, ?)");
+        $stmt->bind_param("iid", $user_id, $item_id, $total_price);
         $stmt->execute();
     }
 
@@ -59,20 +69,23 @@ $popup_items    = [];
 if (isset($_GET['cat_id']) && (int)$_GET['cat_id'] > 0) {
     $cat_id = (int)$_GET['cat_id'];
 
-    $stmt = $conn->prepare("SELECT * FROM categories WHERE category_id = ?");
+    $stmt = $conn->prepare("SELECT * FROM categories WHERE category_id = ? AND is_available = 1");
     $stmt->bind_param("i", $cat_id);
     $stmt->execute();
     $popup_category = $stmt->get_result()->fetch_assoc();
 
-    $stmt = $conn->prepare("SELECT * FROM menu_items WHERE category_id = ? AND is_available = 1");
-    $stmt->bind_param("i", $cat_id);
-    $stmt->execute();
-    $res = $stmt->get_result();
-    while ($row = $res->fetch_assoc()) {
-        $popup_items[] = $row;
+    if ($popup_category) {
+        $stmt = $conn->prepare("SELECT * FROM menu_items WHERE category_id = ? AND is_available = 1 ORDER BY name");
+        $stmt->bind_param("i", $cat_id);
+        $stmt->execute();
+        $res = $stmt->get_result();
+        while ($row = $res->fetch_assoc()) {
+            $popup_items[] = $row;
+        }
     }
 }
 
+// Fetch categories
 if ($search !== '') {
     $stmt = $conn->prepare("SELECT * FROM categories WHERE name LIKE ? AND is_available = 1");
     $like = '%' . $search . '%';
@@ -80,9 +93,10 @@ if ($search !== '') {
     $stmt->execute();
     $categories_result = $stmt->get_result();
 } else {
-    $categories_result = $conn->query("SELECT * FROM categories WHERE is_available = 1");
+    $categories_result = $conn->query("SELECT * FROM categories WHERE is_available = 1 ORDER BY name");
 }
 
+// Get cart count
 $cart_count = 0;
 if ($is_logged_in) {
     $stmt = $conn->prepare("SELECT SUM(quantity) as total FROM cart WHERE user_id = ?");
@@ -91,6 +105,7 @@ if ($is_logged_in) {
     $cart_count = $stmt->get_result()->fetch_assoc()['total'] ?? 0;
 }
 
+// Get notification count
 $notif_count = 0;
 if ($is_logged_in) {
     $stmt = $conn->prepare("SELECT COUNT(*) as count FROM notifications WHERE user_id = ? AND is_read = 0");
@@ -103,7 +118,8 @@ if ($is_logged_in) {
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Dashboard</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Herald Canteen - Dashboard</title>
     <link rel="stylesheet" href="../assets/css/dashboard.css">
     
     <script>
@@ -111,87 +127,97 @@ if ($is_logged_in) {
         alert("You must login first to access this feature.");
         window.location.href = "login.php";
     }
+    
+    function dismissToast() {
+        const toast = document.getElementById('cartToast');
+        if (toast) toast.classList.add('toast-hide');
+    }
     </script>
 </head>
 <body>
 
 <div class="layout">
 
+    <!-- Sidebar -->
     <div class="sidebar">
         <div class="navbar-title">
-    Herald Canteen
-    <span>Herald College Kathmandu</span>
-</div>
+            Herald Canteen
+            <span>Herald College Kathmandu</span>
+        </div>
         <nav>
-            <a href="dashboard.php" class="active">Home</a>
+            <a href="dashboard.php" class="active">🏠 Home</a>
 
-            <a href="<?php echo $is_logged_in ? 'my_cart.php' : 'login.php'; ?>">
-                My Cart
+            <a href="<?php echo $is_logged_in ? 'my_cart.php' : 'portal-login.php'; ?>">
+                🛒 My Cart
                 <?php if ($cart_count > 0): ?>
                     <span class="badge"><?php echo $cart_count; ?></span>
                 <?php endif; ?>
             </a>
 
-            <a href="<?php echo $is_logged_in ? 'my_orders.php' : 'login.php'; ?>">
-                My Orders
+            <a href="<?php echo $is_logged_in ? 'my_orders.php' : 'portal-login.php'; ?>">
+                📦 My Orders
             </a>
 
             <?php if ($is_logged_in): ?>
-                <a href="logout.php">Logout</a>
+                <a href="logout.php">🚪 Logout</a>
             <?php else: ?>
-                <a href="login.php">Login / Signup</a>
+                <a href="portal-login.php">🔑 Login / Signup</a>
             <?php endif; ?>
         </nav>
     </div>
 
+    <!-- Main Content -->
     <div class="main">
 
+        <!-- Topbar -->
         <div class="topbar">
-    <form method="GET" action="dashboard.php" class="search-form">
-        <input type="text" name="search" placeholder="Search categories..."
-            value="<?php echo htmlspecialchars($search); ?>">
-        <button type="submit">Search</button>
-    </form>
+            <form method="GET" action="dashboard.php" class="search-form">
+                <input type="text" name="search" placeholder="🔍 Search categories..."
+                    value="<?php echo htmlspecialchars($search); ?>">
+                <button type="submit">Search</button>
+            </form>
 
-    <div style="display:flex; align-items:center; gap:18px;">
+            <div style="display:flex; align-items:center; gap:18px;">
 
-        <!-- My Profile -->
-        <?php if ($is_logged_in): ?>
-            <a href="user_profile.php" class="profile-link">
-                👤 My Profile
-            </a>
-        <?php else: ?>
-            <a href="login.php" class="profile-link">
-                👤 My Profile
-            </a>
-        <?php endif; ?>
+                <!-- My Profile -->
+                <?php if ($is_logged_in): ?>
+                    <a href="user_profile.php" class="profile-link">
+                        👤 My Profile
+                    </a>
+                <?php else: ?>
+                    <a href="portal-login.php" class="profile-link">
+                        👤 My Profile
+                    </a>
+                <?php endif; ?>
 
-        <!-- Notification -->
-        <?php if ($is_logged_in): ?>
-        <a href="notifications.php" class="notif-wrap">
-            <span>🔔</span>
-            <?php if ($notif_count > 0): ?>
-                <span class="notif-badge"><?php echo $notif_count; ?></span>
-            <?php endif; ?>
-        </a>
-        <?php endif; ?>
+                <!-- Notification -->
+                <?php if ($is_logged_in): ?>
+                <a href="notifications.php" class="notif-wrap">
+                    🔔
+                    <?php if ($notif_count > 0): ?>
+                        <span class="notif-badge"><?php echo $notif_count; ?></span>
+                    <?php endif; ?>
+                </a>
+                <?php endif; ?>
 
-    </div>
-</div>
+            </div>
+        </div>
 
+        <!-- Content Area -->
         <div class="content">
 
             <div class="section-title">
-                <h2>Our Special</h2>
+                <h2>Our Specialties</h2>
                 <p>
                     <?php if ($is_logged_in): ?>
                         Hello <?php echo htmlspecialchars($name); ?>, what are you craving today?
                     <?php else: ?>
-                        Browse our menu — login to order!
+                        Browse our menu — login to order delicious food!
                     <?php endif; ?>
                 </p>
             </div>
 
+            <!-- Category Grid -->
             <div class="category-grid">
                 <?php if ($categories_result && $categories_result->num_rows > 0): ?>
                     <?php while ($cat = $categories_result->fetch_assoc()): ?>
@@ -201,7 +227,7 @@ if ($is_logged_in) {
                             <a href="javascript:void(0)" onclick="requireLogin()" class="category-card">
                         <?php endif; ?>
                             <div class="cat-img-wrap">
-                                <img src="<?php echo '../' . htmlspecialchars($cat['image_url'] ?: 'assets/images/default.jpg'); ?>"> alt="<?php echo htmlspecialchars($cat['name']); ?>">
+                                <img src="<?php echo htmlspecialchars($cat['image_url'] ?: '../assets/images/default.jpg'); ?>" alt="<?php echo htmlspecialchars($cat['name']); ?>">
                             </div>
                             <div class="cat-label">
                                 <h4><?php echo htmlspecialchars($cat['name']); ?></h4>
@@ -218,44 +244,56 @@ if ($is_logged_in) {
     </div>
 </div>
 
+<!-- Category Popup Modal -->
 <?php if ($popup_category): ?>
-<div class="popup-overlay">
+<div class="popup-overlay" id="categoryPopup">
     <div class="popup">
 
         <a href="dashboard.php<?php echo $search ? '?search=' . urlencode($search) : ''; ?>" class="close-btn">✕</a>
 
-        <img class="popup-banner" src="<?php echo '../' . htmlspecialchars($popup_category['image_url'] ?: 'assets/images/default.jpg'); ?>"
-            alt="<?php echo htmlspecialchars($popup_category['name']); ?>">
+        <!-- Category Banner Image -->
+        <div class="popup-banner-wrapper">
+            <img class="popup-banner" src="<?php echo htmlspecialchars($popup_category['image_url'] ?: '../assets/images/default-category.jpg'); ?>"
+                alt="<?php echo htmlspecialchars($popup_category['name']); ?>">
+        </div>
 
         <div class="popup-header-text">
             <h2><?php echo htmlspecialchars($popup_category['name']); ?></h2>
             <p><?php echo htmlspecialchars($popup_category['description']); ?></p>
         </div>
 
+        <!-- Menu Items List - No images for individual items as per requirement -->
         <div class="popup-items">
-            <h3>Choose Your Variety</h3>
+            <h3>🍽️ Choose Your Variety</h3>
             <?php if (count($popup_items) > 0): ?>
-                <?php foreach ($popup_items as $item): ?>
-                    <div class="popup-item">
-                        <div class="popup-item-info">
-                            <h4><?php echo htmlspecialchars($item['name']); ?></h4>
-                            <p><?php echo htmlspecialchars($item['description']); ?></p>
-                            <span class="price">Rs. <?php echo number_format($item['price'], 2); ?></span>
+                <div class="items-grid">
+                    <?php foreach ($popup_items as $item): ?>
+                        <div class="popup-item">
+                            <div class="popup-item-info">
+                                <h4><?php echo htmlspecialchars($item['name']); ?></h4>
+                                <p><?php echo htmlspecialchars($item['description']); ?></p>
+                                <div class="item-footer">
+                                    <span class="price">Rs. <?php echo number_format($item['price'], 2); ?></span>
+                                    <?php if ($item['rating'] > 0): ?>
+                                        <span class="rating">⭐ <?php echo number_format($item['rating'], 1); ?></span>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+
+                            <?php if ($is_logged_in): ?>
+                            <form method="POST" action="dashboard.php?cat_id=<?php echo $popup_category['category_id']; ?><?php echo $search ? '&search=' . urlencode($search) : ''; ?>">
+                                <input type="hidden" name="item_id" value="<?php echo $item['item_id']; ?>">
+                                <button type="submit" class="add-btn">+ Add to Bag</button>
+                            </form>
+                            <?php else: ?>
+                                <a href="login.php" class="add-btn">+ Add to Bag</a>
+                            <?php endif; ?>
+
                         </div>
-
-                        <?php if ($is_logged_in): ?>
-                        <form method="POST" action="dashboard.php?cat_id=<?php echo $popup_category['category_id']; ?><?php echo $search ? '&search=' . urlencode($search) : ''; ?>">
-                            <input type="hidden" name="item_id" value="<?php echo $item['item_id']; ?>">
-                            <button type="submit" class="add-btn">Add to Bag</button>
-                        </form>
-                        <?php else: ?>
-                            <a href="login.php" class="add-btn">Add to Bag</a>
-                        <?php endif; ?>
-
-                    </div>
-                <?php endforeach; ?>
+                    <?php endforeach; ?>
+                </div>
             <?php else: ?>
-                <p class="no-result">No items available.</p>
+                <p class="no-result">No items available in this category at the moment.</p>
             <?php endif; ?>
         </div>
 
@@ -263,6 +301,7 @@ if ($is_logged_in) {
 </div>
 <?php endif; ?>
 
+<!-- Toast Notification -->
 <?php if ($added_item_name): ?>
 <div class="toast" id="cartToast">
     <div class="toast-icon">
@@ -273,17 +312,16 @@ if ($is_logged_in) {
     </div>
     <div class="toast-body">
         <span class="toast-title"><?php echo $added_item_name; ?></span>
-        <span class="toast-sub">Added to your bag successfully</span>
+        <span class="toast-sub">Added to your bag successfully ✓</span>
     </div>
     <button class="toast-close" onclick="dismissToast()">✕</button>
 </div>
 <script>
     const toast = document.getElementById('cartToast');
-    setTimeout(() => {
-        if (toast) toast.classList.add('toast-hide');
-    }, 9500);
-    function dismissToast() {
-        if (toast) toast.classList.add('toast-hide');
+    if (toast) {
+        setTimeout(() => {
+            toast.classList.add('toast-hide');
+        }, 3000);
     }
 </script>
 <?php endif; ?>

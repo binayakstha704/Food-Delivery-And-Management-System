@@ -346,8 +346,8 @@ $failure_url = "http://" . $_SERVER['HTTP_HOST'] . dirname($_SERVER['PHP_SELF'])
         <h3>Herald Canteen</h3>
         <nav>
             <a href="dashboard.php">Home</a>
-            <a href="cart.php">My Cart</a>
-            <a href="orders.php">My Orders</a>
+            <a href="my_cart.php">My Cart</a>
+            <a href="my_orders.php">My Orders</a>
             <a href="logout.php">Logout</a>
         </nav>
     </div>

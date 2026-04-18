@@ -56,7 +56,7 @@ try {
 
     unset($_SESSION['pending_payment']);
 
-    header("Location: orders.php?payment=cod_success&order_id=$order_id");
+    header("Location: my_orders.php?payment=cod_success&order_id=$order_id");
     exit;
 
 } catch (Exception $e) {

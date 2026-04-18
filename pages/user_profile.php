@@ -3,13 +3,13 @@
 
 session_start();
 
-require_once '../config/originaldb.php'; // your real DB
+require_once '../config/db.php'; // your real DB
 
 // 🔐 LOGIN CHECK (your requirement)
 if (!isset($_SESSION['user_id'])) {
     echo "<script>
         alert('You must login first to access your profile.');
-        window.location.href = 'login.php';
+        window.location.href = 'portal-login.php';
     </script>";
     exit;
 }
@@ -41,10 +41,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_profile'])) {
             $error = 'Please enter a valid phone number.';
         } else {
 
-            // ✅ FIX 1: full_name instead of name
-            $stmt = $conn->prepare("UPDATE users SET full_name = ?, phone = ? WHERE user_id = ?");
-            $stmt->bind_param("ssi", $new_name, $new_phone ?: null, $user_id);
-            $stmt->execute();
+           // ✅ FIX 1: full_name instead of name
+$stmt = $conn->prepare("UPDATE users SET full_name = ?, phone = ? WHERE user_id = ?");
+if (empty($new_phone)) {
+    $stmt->bind_param("ssi", $new_name, $new_phone, $user_id);
+} else {
+    $stmt->bind_param("ssi", $new_name, $new_phone, $user_id);
+}
+$stmt->execute();
 
             // ✅ FIX 2: session consistency
             $_SESSION['full_name'] = $new_name;

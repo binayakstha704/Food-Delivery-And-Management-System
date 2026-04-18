@@ -3,16 +3,14 @@
 
 session_start();
 
-if (file_exists(__DIR__ . '/../config/originaldb.php')) {
-    require_once __DIR__ . '/../config/originaldb.php';
-} elseif (file_exists(__DIR__ . '/../db.php')) {
-    require_once __DIR__ . '/../db.php';
+if (file_exists(__DIR__ . '/../config/db.php')) {
+    require_once __DIR__ . '/../config/db.php';
 } else {
     die('Database config not found.');
 }
 
 if (empty($_SESSION['user_id'])) {
-    header('Location: pages/login.php');
+    header('Location: login.php');
     exit;
 }
 
@@ -37,12 +35,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $cart_id = (int) ($_POST['cart_id'] ?? 0);
 
     if ($action === 'increase' && $cart_id) {
-        $stmt = $conn->prepare("UPDATE cart SET quantity = quantity + 1 WHERE cart_id = ? AND user_id = ? AND quantity < 20");
+        // Get current quantity and price
+        $stmt = $conn->prepare("SELECT c.quantity, m.price FROM cart c JOIN menu_items m ON c.item_id = m.item_id WHERE c.cart_id = ? AND c.user_id = ?");
         $stmt->bind_param("ii", $cart_id, $user_id);
         $stmt->execute();
+        $result = $stmt->get_result();
+        $row = $result->fetch_assoc();
+        
+        if ($row && $row['quantity'] < 20) {
+            $new_qty = $row['quantity'] + 1;
+            $new_total = $new_qty * $row['price'];
+            $stmt = $conn->prepare("UPDATE cart SET quantity = ?, total_price = ? WHERE cart_id = ? AND user_id = ?");
+            $stmt->bind_param("idii", $new_qty, $new_total, $cart_id, $user_id);
+            $stmt->execute();
+        }
 
     } elseif ($action === 'decrease' && $cart_id) {
-        $stmt = $conn->prepare("SELECT quantity FROM cart WHERE cart_id = ? AND user_id = ?");
+        $stmt = $conn->prepare("SELECT c.quantity, m.price FROM cart c JOIN menu_items m ON c.item_id = m.item_id WHERE c.cart_id = ? AND c.user_id = ?");
         $stmt->bind_param("ii", $cart_id, $user_id);
         $stmt->execute();
         $row = $stmt->get_result()->fetch_assoc();
@@ -54,8 +63,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmt->execute();
             } else {
                 $new_qty = (int)$row['quantity'] - 1;
-                $stmt = $conn->prepare("UPDATE cart SET quantity = ? WHERE cart_id = ? AND user_id = ?");
-                $stmt->bind_param("iii", $new_qty, $cart_id, $user_id);
+                $new_total = $new_qty * $row['price'];
+                $stmt = $conn->prepare("UPDATE cart SET quantity = ?, total_price = ? WHERE cart_id = ? AND user_id = ?");
+                $stmt->bind_param("idii", $new_qty, $new_total, $cart_id, $user_id);
                 $stmt->execute();
             }
         }
@@ -80,7 +90,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $stmt = $conn->prepare("
-    SELECT c.cart_id, c.quantity,
+    SELECT c.cart_id, c.quantity, c.total_price as cart_total_price,
            m.item_id, m.name AS item_name, m.description, m.price, m.is_available
     FROM cart c
     JOIN menu_items m ON c.item_id = m.item_id
@@ -113,7 +123,8 @@ function get_food_emoji(string $name): string {
     $map = [
         'momo'=>'🥟','burger'=>'🍔','pizza'=>'🍕','rice'=>'🍚',
         'noodle'=>'🍜','chicken'=>'🍗','tea'=>'☕','coffee'=>'☕',
-        'cake'=>'🎂','soup'=>'🍲'
+        'cake'=>'🎂','soup'=>'🍲','pasta'=>'🍝','sandwich'=>'🥪',
+        'roll'=>'🌯','drink'=>'🥤','coffee'=>'☕','dessert'=>'🍰'
     ];
     $lower = strtolower($name);
     foreach ($map as $k => $e) {
@@ -132,22 +143,67 @@ $initials = strtoupper($name_parts[0][0] . ($name_parts[1][0] ?? ''));
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
 <title>My Cart — Herald Canteen</title>
-
-<!-- IMPORTANT: your main UI system -->
 <link rel="stylesheet" href="../assets/css/style.css">
-
+<style>
+.item-cell {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+.item-emoji {
+    font-size: 32px;
+}
+.item-name {
+    font-weight: 600;
+    margin-bottom: 4px;
+}
+.item-cuisine {
+    font-size: 12px;
+    color: #666;
+}
+.qty-stepper {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+.qty-stepper button {
+    background: #f0f0f0;
+    border: none;
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 18px;
+    font-weight: bold;
+}
+.qty-stepper button:hover {
+    background: #e0e0e0;
+}
+.item-price-strong {
+    font-weight: 600;
+    color: #e67e22;
+}
+.btn-danger {
+    background: #fee;
+    color: #e74c3c;
+    border: none;
+    padding: 8px 12px;
+    border-radius: 8px;
+    cursor: pointer;
+}
+.btn-danger:hover {
+    background: #fdd;
+}
+</style>
 </head>
-
 <body>
 
 <nav class="navbar">
-        <div class="navbar-title">
-            Herald Canteen
-            <span>Herald College Kathmandu</span>
-        </div>
-    </a>
+    <div class="navbar-title">
+        Herald Canteen
+        <span>Herald College Kathmandu</span>
+    </div>
 
     <ul class="navbar-nav">
         <li><a href="dashboard.php">Home</a></li>
@@ -159,7 +215,7 @@ $initials = strtoupper($name_parts[0][0] . ($name_parts[1][0] ?? ''));
         <div class="navbar-avatar"><?= htmlspecialchars($initials) ?></div>
         <span class="navbar-username"><?= htmlspecialchars($full_name) ?></span>
 
-        <form method="POST" action="pages/logout.php">
+        <form method="POST" action="logout.php">
             <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
             <button class="btn-logout">Logout</button>
         </form>
@@ -191,7 +247,7 @@ $initials = strtoupper($name_parts[0][0] . ($name_parts[1][0] ?? ''));
     <?php else: ?>
 
         <div class="card">
-            <table>
+            <table class="cart-table">
                 <thead>
                     <tr>
                         <th>Item</th>
@@ -223,7 +279,7 @@ $initials = strtoupper($name_parts[0][0] . ($name_parts[1][0] ?? ''));
                                     <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
                                     <input type="hidden" name="action" value="decrease">
                                     <input type="hidden" name="cart_id" value="<?= $item['cart_id'] ?>">
-                                    <button>−</button>
+                                    <button type="submit">−</button>
                                 </form>
 
                                 <span><?= $item['quantity'] ?></span>
@@ -232,7 +288,7 @@ $initials = strtoupper($name_parts[0][0] . ($name_parts[1][0] ?? ''));
                                     <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
                                     <input type="hidden" name="action" value="increase">
                                     <input type="hidden" name="cart_id" value="<?= $item['cart_id'] ?>">
-                                    <button>+</button>
+                                    <button type="submit">+</button>
                                 </form>
                             </div>
                         </td>
@@ -246,7 +302,7 @@ $initials = strtoupper($name_parts[0][0] . ($name_parts[1][0] ?? ''));
                                 <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
                                 <input type="hidden" name="action" value="remove">
                                 <input type="hidden" name="cart_id" value="<?= $item['cart_id'] ?>">
-                                <button class="btn btn-danger btn-sm">🗑</button>
+                                <button type="submit" class="btn-danger">🗑 Remove</button>
                             </form>
                         </td>
                     </tr>
@@ -275,9 +331,17 @@ $initials = strtoupper($name_parts[0][0] . ($name_parts[1][0] ?? ''));
                 <form method="POST">
                     <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
                     <input type="hidden" name="action" value="checkout">
-                    <button class="btn btn-primary">Checkout</button>
+                    <button type="submit" class="btn btn-primary">Proceed to Checkout</button>
                 </form>
             </div>
+        </div>
+
+        <div style="margin-top: 20px; text-align: center;">
+            <form method="POST">
+                <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
+                <input type="hidden" name="action" value="clear_all">
+                <button type="submit" class="btn-danger" style="padding: 10px 20px;" onclick="return confirm('Clear entire cart?')">Clear Cart</button>
+            </form>
         </div>
 
     <?php endif; ?>

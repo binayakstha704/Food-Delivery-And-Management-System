@@ -6,6 +6,6 @@ session_unset();
 session_destroy();
 
 // ✅ Correct redirect
-header("Location: user-login.php"); 
+header("Location: portal-login.php"); 
 exit();
 ?>

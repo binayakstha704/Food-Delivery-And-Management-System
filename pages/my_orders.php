@@ -3,14 +3,7 @@
 
 session_start();
 
-// Use same DB connection as dashboard/cart
-if (file_exists(__DIR__ . '/config/binayakdb.php')) {
-    require_once __DIR__ . '/config/binayakdb.php';
-} elseif (file_exists(__DIR__ . '/db.php')) {
-    require_once __DIR__ . '/db.php';
-} else {
-    die('Database config not found.');
-}
+require_once '../config/db.php';
 
 if (empty($_SESSION['user_id'])) {
     header('Location: pages/dashboard.php');
@@ -179,18 +172,18 @@ $tab_labels = [
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>My Orders — Herald Canteen</title>
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="../assets/css/style.css">
 </head>
 <body>
 
 <nav class="navbar">
     <a class="navbar-brand" href="pages/dashboard.php">
-        <img src="Canteen.PNG" alt="Herald Canteen" class="navbar-logo">
+        <img src="../assets/images/Canteen.PNG" alt="Herald Canteen" class="navbar-logo">
         <div class="navbar-title">Herald Canteen <span>Herald College Kathmandu</span></div>
     </a>
 
     <ul class="navbar-nav">
-        <li><a href="pages/dashboard.php">Menu</a></li>
+        <li><a href="dashboard.php">Menu</a></li>
         <li><a href="my_cart.php">🛒 Cart</a></li>
         <li><a href="my_orders.php" class="active">My Orders</a></li>
         <li><a href="user_profile.php">Profile</a></li>
@@ -336,7 +329,7 @@ $tab_labels = [
     <?php endif; ?>
 
     <div>
-        <a href="pages/dashboard.php" class="btn btn-secondary">Order More Food</a>
+        <a href="dashboard.php" class="btn btn-secondary">Order More Food</a>
     </div>
 </div>
 
