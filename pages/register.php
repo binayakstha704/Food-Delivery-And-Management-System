@@ -111,7 +111,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         </form>
 
         <div class="register-link">
-            <p>Already have an account? <a href="user-login.php">Login here</a></p>
+            <p>Already have an account? <a href="portal-login.php">Login here</a></p>
         </div>
     </div>
 </div>
