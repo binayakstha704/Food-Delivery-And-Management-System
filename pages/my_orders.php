@@ -18,9 +18,9 @@ if (empty($_SESSION['csrf_token'])) {
 
 // Map database status to UI status
 $status_map = [
-    'pending' => 'in_process',
+    'pending'   => 'in_process',
     'preparing' => 'in_process',
-    'ready' => 'ready_for_delivery', 
+    'ready'     => 'ready_for_delivery',
     'delivered' => 'delivered',
     'cancelled' => 'delivered'
 ];
@@ -30,106 +30,105 @@ $filter = in_array($_GET['filter'] ?? '', $allowed_filters) ? $_GET['filter'] : 
 
 function filter_to_db_status($filter) {
     return match($filter) {
-        'in_process' => ['pending', 'preparing'],
+        'in_process'         => ['pending', 'preparing'],
         'ready_for_delivery' => ['ready'],
-        'on_delivery' => [],
-        'delivered' => ['delivered', 'cancelled'],
-        'active' => ['pending', 'preparing', 'ready'],
-        default => null
+        'on_delivery'        => [],
+        'delivered'          => ['delivered', 'cancelled'],
+        'active'             => ['pending', 'preparing', 'ready'],
+        default              => null
     };
 }
 
-// FIXED: Use updated_at instead of created_at, removed item_count subquery
+// ── Fetch orders ──────────────────────────────────────────────────────────────
 if ($filter === 'all') {
-    $stmt = $conn->prepare("
-        SELECT * FROM orders WHERE user_id = ? ORDER BY updated_at DESC
-    ");
+    $stmt = $conn->prepare("SELECT * FROM orders WHERE user_id = ? ORDER BY updated_at DESC");
     $stmt->bind_param("i", $user_id);
     $stmt->execute();
+    $orders = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    $stmt->close();
+
 } elseif ($filter === 'active') {
-    $stmt = $conn->prepare("
-        SELECT * FROM orders 
-        WHERE user_id = ? AND status IN ('pending', 'preparing', 'ready')
-        ORDER BY updated_at DESC
-    ");
+    $stmt = $conn->prepare("SELECT * FROM orders WHERE user_id = ? AND status IN ('pending','preparing','ready') ORDER BY updated_at DESC");
     $stmt->bind_param("i", $user_id);
     $stmt->execute();
+    $orders = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    $stmt->close();
+
 } else {
     $db_statuses = filter_to_db_status($filter);
     if (!empty($db_statuses)) {
         $placeholders = str_repeat('?,', count($db_statuses) - 1) . '?';
-        $query = "SELECT * FROM orders WHERE user_id = ? AND status IN ($placeholders) ORDER BY updated_at DESC";
-        $stmt = $conn->prepare($query);
-        $params = array_merge([$user_id], $db_statuses);
-        $types = "s" . str_repeat("s", count($db_statuses));
-        $stmt->bind_param($types, ...$params);
+        $stmt = $conn->prepare("SELECT * FROM orders WHERE user_id = ? AND status IN ($placeholders) ORDER BY updated_at DESC");
+        $types = "i" . str_repeat("s", count($db_statuses));
+        $stmt->bind_param($types, ...array_merge([$user_id], $db_statuses));
         $stmt->execute();
+        $orders = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+        $stmt->close();
     } else {
+        // 'on_delivery' has no matching DB status yet
         $orders = [];
     }
 }
-$result = $stmt->get_result() ?? [];
-$orders = $result->fetch_all(MYSQLI_ASSOC);
 
-// Get counts
+// ── Get counts ────────────────────────────────────────────────────────────────
 $count_stmt = $conn->prepare("SELECT status, COUNT(*) as cnt FROM orders WHERE user_id = ? GROUP BY status");
 $count_stmt->bind_param("i", $user_id);
 $count_stmt->execute();
-$count_result = $count_stmt->get_result();
+$count_rows = $count_stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+$count_stmt->close();
 
 $counts = [
-    'all' => 0, 'active' => 0, 'in_process' => 0, 
+    'all' => 0, 'active' => 0, 'in_process' => 0,
     'ready_for_delivery' => 0, 'on_delivery' => 0, 'delivered' => 0
 ];
 
-foreach ($count_result->fetch_all(MYSQLI_ASSOC) as $row) {
-    $status = $row['status'];
+foreach ($count_rows as $row) {
     $cnt = (int) $row['cnt'];
-    
-    if ($status === 'pending' || $status === 'preparing') {
-        $counts['in_process'] = $cnt;
-    } elseif ($status === 'ready') {
-        $counts['ready_for_delivery'] = $cnt;
-    } elseif ($status === 'delivered' || $status === 'cancelled') {
-        $counts['delivered'] = $cnt;
+    if ($row['status'] === 'pending' || $row['status'] === 'preparing') {
+        $counts['in_process'] += $cnt;
+    } elseif ($row['status'] === 'ready') {
+        $counts['ready_for_delivery'] += $cnt;
+    } elseif ($row['status'] === 'delivered' || $row['status'] === 'cancelled') {
+        $counts['delivered'] += $cnt;
     }
     $counts['all'] += $cnt;
 }
 
 $counts['active'] = $counts['in_process'] + $counts['ready_for_delivery'] + $counts['on_delivery'];
 
-// Get order details
-$order_ids = array_column($orders, 'order_id');
+// ── Get order item details ────────────────────────────────────────────────────
+$order_ids   = array_column($orders, 'order_id');
 $details_map = [];
 
 if (!empty($order_ids)) {
     $placeholders = str_repeat('?,', count($order_ids) - 1) . '?';
     $stmt = $conn->prepare("
-        SELECT oi.order_id, oi.quantity, oi.price, mi.name as item_name
+        SELECT oi.order_id, oi.quantity, oi.price, mi.name AS item_name
         FROM order_items oi
         JOIN menu_items mi ON oi.item_id = mi.item_id
         WHERE oi.order_id IN ($placeholders)
     ");
     $stmt->bind_param(str_repeat('i', count($order_ids)), ...$order_ids);
     $stmt->execute();
-    
     foreach ($stmt->get_result()->fetch_all(MYSQLI_ASSOC) as $d) {
         $details_map[$d['order_id']][] = $d;
     }
+    $stmt->close();
 }
 
-// Total spent
-$spent_stmt = $conn->prepare("SELECT COALESCE(SUM(total_amount), 0) as total FROM orders WHERE user_id = ? AND status = 'delivered'");
+// ── Total spent ───────────────────────────────────────────────────────────────
+$spent_stmt = $conn->prepare("SELECT COALESCE(SUM(total_amount), 0) AS total FROM orders WHERE user_id = ? AND status = 'delivered'");
 $spent_stmt->bind_param("i", $user_id);
 $spent_stmt->execute();
 $total_spent = (float) $spent_stmt->get_result()->fetch_assoc()['total'];
+$spent_stmt->close();
 
-// Rest of your exact UI code (unchanged)
+// ── UI helpers ────────────────────────────────────────────────────────────────
 $status_steps = [
-    'in_process' => ['label' => 'In Process', 'icon' => '👨‍🍳', 'step' => 1],
-    'ready_for_delivery' => ['label' => 'Ready', 'icon' => '✅', 'step' => 2],
-    'on_delivery' => ['label' => 'On the Way', 'icon' => '🛵', 'step' => 3],
-    'delivered' => ['label' => 'Delivered', 'icon' => '🏠', 'step' => 4],
+    'in_process'         => ['label' => 'In Process', 'icon' => '👨‍🍳', 'step' => 1],
+    'ready_for_delivery' => ['label' => 'Ready',      'icon' => '✅',   'step' => 2],
+    'on_delivery'        => ['label' => 'On the Way', 'icon' => '🛵',   'step' => 3],
+    'delivered'          => ['label' => 'Delivered',  'icon' => '🏠',   'step' => 4],
 ];
 
 $all_steps = ['in_process', 'ready_for_delivery', 'on_delivery', 'delivered'];
@@ -177,7 +176,7 @@ $tab_labels = [
 <body>
 
 <nav class="navbar">
-    <a class="navbar-brand" href="pages/dashboard.php">
+    <a class="navbar-brand" href="dashboard.php">
         <img src="../assets/images/Canteen.PNG" alt="Herald Canteen" class="navbar-logo">
         <div class="navbar-title">Herald Canteen <span>Herald College Kathmandu</span></div>
     </a>
@@ -191,7 +190,7 @@ $tab_labels = [
 
     <div class="navbar-user">
         <div class="navbar-avatar"><?= htmlspecialchars($initials) ?></div>
-        <form method="POST" action="pages/logout.php">
+        <form method="POST" action="logout.php">
             <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>">
             <button type="submit" class="btn-logout">Logout</button>
         </form>
@@ -261,10 +260,10 @@ $tab_labels = [
         </div>
     <?php else: ?>
         <?php foreach ($orders as $order):
-            $ui_status = $status_map[$order['status']] ?? 'delivered';
+            $ui_status    = $status_map[$order['status']] ?? 'delivered';
             $current_step = $status_steps[$ui_status]['step'] ?? 1;
             $order_items  = $details_map[$order['order_id']] ?? [];
-            $order_date = $order['updated_at'] ?? date('Y-m-d H:i:s'); // Fallback
+            $order_date   = $order['updated_at'] ?? date('Y-m-d H:i:s');
         ?>
             <div class="card order-card">
                 <div class="order-header">
@@ -283,8 +282,8 @@ $tab_labels = [
 
                 <div class="status-track">
                     <?php foreach ($all_steps as $step_key):
-                        $step_num = $status_steps[$step_key]['step'];
-                        $is_done = $step_num < $current_step;
+                        $step_num  = $status_steps[$step_key]['step'];
+                        $is_done   = $step_num < $current_step;
                         $is_active = $step_num === $current_step;
                         $css_class = $is_done ? 'done' : ($is_active ? 'active' : '');
                     ?>
