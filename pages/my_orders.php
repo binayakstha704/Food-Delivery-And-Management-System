@@ -255,7 +255,7 @@ $tab_labels = [
                         You haven't placed any orders yet.
                     <?php endif; ?>
                 </p>
-                <a href="pages/dashboard.php" class="btn btn-primary">Browse Menu</a>
+                <a href="dashboard.php" class="btn btn-primary">Browse Menu</a>
             </div>
         </div>
     <?php else: ?>

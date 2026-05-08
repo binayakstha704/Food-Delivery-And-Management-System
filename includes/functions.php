@@ -23,7 +23,7 @@ function validate_registration_data(string $full_name, string $email, string $pa
 
     if ($password === '') {
         $errors[] = 'Password is required.';
-    } elseif (strlen($password) < 6) {
+    } elseif (strlen($password) < 8) {
         $errors[] = 'Password must be at least 6 characters long.';
     }
 

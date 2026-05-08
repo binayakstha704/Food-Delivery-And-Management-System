@@ -2,20 +2,49 @@
 session_start();
 require_once "../config/db.php";
 require_once "../includes/auth.php";
+require_once "../includes/functions.php";
 
 require_role('staff');
 
+$field_errors = [];
 $message = '';
-$errors = [];
+
+// Helper function for consistent sanitization
+function sanitize_output($data) {
+    return htmlspecialchars($data, ENT_QUOTES, 'UTF-8');
+}
 
 /* ---------------------------
    HANDLE DELIVERY STATUS UPDATE
 ---------------------------- */
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_delivery_status'])) {
-    $order_id   = (int)($_POST['order_id'] ?? 0);
-    $new_status = $_POST['new_status'] ?? '';
+    // Validate order_id with proper filtering
+    $order_id_raw = $_POST['order_id'] ?? 0;
+    $order_id = filter_var($order_id_raw, FILTER_VALIDATE_INT);
+    
+    if ($order_id === false || $order_id <= 0) {
+        $field_errors['order_id'] = 'Valid order ID is required.';
+    } elseif ($order_id > 9999999) {
+        $field_errors['order_id'] = 'Invalid order ID value.';
+    }
+    
+    $new_status = clean_input($_POST['new_status'] ?? '');
 
-    if ($order_id > 0 && in_array($new_status, ['out_for_delivery', 'delivered'], true)) {
+    // Trim and validate new_status with whitespace check
+    $trimmed_status = trim($new_status);
+    if ($new_status === '') {
+        $field_errors['new_status'] = 'Delivery status is required.';
+    } elseif ($trimmed_status === '') {
+        $field_errors['new_status'] = 'Delivery status cannot consist of whitespace characters only.';
+    } elseif (strlen($trimmed_status) > 50) {
+        $field_errors['new_status'] = 'Delivery status value is too long.';
+    } elseif (!in_array($trimmed_status, ['out_for_delivery', 'delivered'], true)) {
+        $field_errors['new_status'] = 'Invalid delivery status value.';
+    } else {
+        $new_status = $trimmed_status;
+    }
+
+    if (empty($field_errors)) {
         $stmt = $conn->prepare("
             SELECT 
                 o.status,
@@ -40,9 +69,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_delivery_statu
                 ($current_status === 'out_for_delivery' && $new_status === 'delivered');
 
             if (!$allowed_transition) {
-                $errors[] = "Invalid delivery status transition for staff.";
+                $field_errors['general'] = "Invalid delivery status transition for staff.";
             } elseif ($new_status === 'delivered' && $payment_status !== 'successful') {
-                $errors[] = "Order cannot be marked as delivered until payment is successful.";
+                $field_errors['general'] = "Order cannot be marked as delivered until payment is successful.";
             } else {
                 $stmt = $conn->prepare("UPDATE orders SET status = ? WHERE order_id = ?");
                 $stmt->bind_param("si", $new_status, $order_id);
@@ -50,16 +79,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_delivery_statu
                 if ($stmt->execute()) {
                     $message = "Delivery status updated successfully.";
                 } else {
-                    $errors[] = "Failed to update delivery status.";
+                    $field_errors['general'] = "Failed to update delivery status.";
                 }
 
                 $stmt->close();
             }
         } else {
-            $errors[] = "Order not found.";
+            $field_errors['order_id'] = "Order not found.";
         }
-    } else {
-        $errors[] = "Invalid delivery update request.";
     }
 }
 
@@ -67,9 +94,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_delivery_statu
    HANDLE COD PAYMENT CONFIRMATION
 ---------------------------- */
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['confirm_cod_payment'])) {
-    $order_id = (int)($_POST['order_id'] ?? 0);
+    // Validate order_id with proper filtering
+    $order_id_raw = $_POST['order_id'] ?? 0;
+    $order_id = filter_var($order_id_raw, FILTER_VALIDATE_INT);
 
-    if ($order_id > 0) {
+    if ($order_id === false || $order_id <= 0) {
+        $field_errors['order_id'] = "Valid order ID is required.";
+    } elseif ($order_id > 9999999) {
+        $field_errors['order_id'] = "Invalid order ID value.";
+    }
+
+    if (empty($field_errors)) {
         $stmt = $conn->prepare("
             SELECT 
                 o.status,
@@ -88,32 +123,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['confirm_cod_payment']
         $stmt->close();
 
         if (!$payment_row) {
-            $errors[] = "Order not found.";
+            $field_errors['order_id'] = "Order not found.";
         } elseif ($payment_row['payment_method'] !== 'cod') {
-            $errors[] = "Manual payment confirmation is only allowed for COD orders.";
+            $field_errors['general'] = "Manual payment confirmation is only allowed for COD orders.";
         } elseif ($payment_row['status'] !== 'out_for_delivery') {
-            $errors[] = "COD payment can only be confirmed when the order is out for delivery.";
+            $field_errors['general'] = "COD payment can only be confirmed when the order is out for delivery.";
         } elseif (!empty($payment_row['payment_id']) && $payment_row['payment_status'] === 'successful') {
-            $errors[] = "COD payment is already confirmed.";
+            $field_errors['general'] = "COD payment is already confirmed.";
         } else {
             if (empty($payment_row['payment_id'])) {
                 $payment_method = 'cod';
                 $payment_status = 'successful';
                 $amount = (float)$payment_row['total_amount'];
-
-                $stmt = $conn->prepare("
-                    INSERT INTO payments (order_id, payment_method, payment_status, amount, paid_at)
-                    VALUES (?, ?, ?, ?, NOW())
-                ");
-                $stmt->bind_param("issd", $order_id, $payment_method, $payment_status, $amount);
-
-                if ($stmt->execute()) {
-                    $message = "COD payment recorded successfully.";
+                
+                // Validate amount
+                if ($amount <= 0) {
+                    $field_errors['general'] = "Invalid order amount.";
                 } else {
-                    $errors[] = "Failed to record COD payment.";
-                }
+                    $stmt = $conn->prepare("
+                        INSERT INTO payments (order_id, payment_method, payment_status, amount, paid_at)
+                        VALUES (?, ?, ?, ?, NOW())
+                    ");
+                    $stmt->bind_param("issd", $order_id, $payment_method, $payment_status, $amount);
 
-                $stmt->close();
+                    if ($stmt->execute()) {
+                        $message = "COD payment recorded successfully.";
+                    } else {
+                        $field_errors['general'] = "Failed to record COD payment.";
+                    }
+
+                    $stmt->close();
+                }
             } else {
                 $payment_status = 'successful';
 
@@ -127,14 +167,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['confirm_cod_payment']
                 if ($stmt->execute()) {
                     $message = "COD payment confirmed successfully.";
                 } else {
-                    $errors[] = "Failed to confirm COD payment.";
+                    $field_errors['general'] = "Failed to confirm COD payment.";
                 }
 
                 $stmt->close();
             }
         }
-    } else {
-        $errors[] = "Invalid COD payment request.";
     }
 }
 
@@ -148,33 +186,40 @@ $summary = [
     'pending_payments' => 0
 ];
 
-$count_result = $conn->query("
+// Using prepared statement for consistency
+$count_stmt = $conn->prepare("
     SELECT status, COUNT(*) AS total
     FROM orders
     WHERE status IN ('ready', 'out_for_delivery', 'delivered')
     GROUP BY status
 ");
+$count_stmt->execute();
+$count_result = $count_stmt->get_result();
 
 if ($count_result) {
     while ($row = $count_result->fetch_assoc()) {
         $summary[$row['status']] = (int)$row['total'];
     }
 }
+$count_stmt->close();
 
-$pending_payment_result = $conn->query("
+$pending_stmt = $conn->prepare("
     SELECT COUNT(*) AS total
     FROM payments
     WHERE payment_status = 'pending'
 ");
+$pending_stmt->execute();
+$pending_payment_result = $pending_stmt->get_result();
 
 if ($pending_payment_result) {
     $summary['pending_payments'] = (int)($pending_payment_result->fetch_assoc()['total'] ?? 0);
 }
+$pending_stmt->close();
 
 /* ---------------------------
    FETCH STAFF ORDERS
 ---------------------------- */
-$orders = $conn->query("
+$orders_stmt = $conn->prepare("
     SELECT
         o.order_id,
         u.full_name,
@@ -206,6 +251,9 @@ $orders = $conn->query("
         o.created_at
     ORDER BY o.order_id DESC
 ");
+$orders_stmt->execute();
+$orders = $orders_stmt->get_result();
+$orders_stmt->close();
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -213,7 +261,7 @@ $orders = $conn->query("
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Staff Control Panel</title>
-    <link rel="stylesheet" href="../assets/css/dashboard.css">
+    <link rel="stylesheet" href="../assets/css/style.css">
 
     <style>
         :root {
@@ -402,6 +450,13 @@ $orders = $conn->query("
             font-size: 13px;
         }
 
+        .field-error {
+            display: block;
+            color: #c0392b;
+            font-size: 13px;
+            margin-top: 5px;
+        }
+
         @media (max-width: 1100px) {
             .summary-grid {
                 grid-template-columns: 1fr 1fr;
@@ -435,7 +490,7 @@ $orders = $conn->query("
 
         <div class="topbar">
             <div style="font-weight:600;">
-                Welcome, <?php echo htmlspecialchars($_SESSION['full_name']); ?>
+                Welcome, <?php echo sanitize_output($_SESSION['full_name']); ?>
             </div>
         </div>
 
@@ -447,13 +502,11 @@ $orders = $conn->query("
             </div>
 
             <?php if ($message !== ''): ?>
-                <div class="alert-success"><?php echo htmlspecialchars($message); ?></div>
+                <div class="alert-success">✓ <?php echo sanitize_output($message); ?></div>
             <?php endif; ?>
 
-            <?php if (!empty($errors)): ?>
-                <?php foreach ($errors as $error): ?>
-                    <div class="alert-error"><?php echo htmlspecialchars($error); ?></div>
-                <?php endforeach; ?>
+            <?php if (!empty($field_errors['general'])): ?>
+                <div class="alert-error">⚠️ <?php echo sanitize_output($field_errors['general']); ?></div>
             <?php endif; ?>
 
             <div class="summary-grid">
@@ -478,105 +531,117 @@ $orders = $conn->query("
             <div class="panel-card" id="orders-section">
                 <h3>Delivery & Payment Orders</h3>
 
+                <?php if (!empty($field_errors['order_id'])): ?>
+                    <div class="alert-error">⚠️ <?php echo sanitize_output($field_errors['order_id']); ?></div>
+                <?php endif; ?>
+
+                <?php if (!empty($field_errors['new_status'])): ?>
+                    <div class="alert-error">⚠️ <?php echo sanitize_output($field_errors['new_status']); ?></div>
+                <?php endif; ?>
+
                 <table class="staff-table">
-                    <tr>
-                        <th>Order ID</th>
-                        <th>Customer</th>
-                        <th>Items</th>
-                        <th>Total Amount</th>
-                        <th>Delivery Status</th>
-                        <th>Payment Method</th>
-                        <th>Payment Status</th>
-                        <th>Created At</th>
-                        <th>Actions</th>
-                    </tr>
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Customer</th>
+                            <th>Items</th>
+                            <th>Total Amount</th>
+                            <th>Delivery Status</th>
+                            <th>Payment Method</th>
+                            <th>Payment Status</th>
+                            <th>Created At</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php if ($orders && $orders->num_rows > 0): ?>
+                            <?php $counter = 1; ?>
+                            <?php while ($order = $orders->fetch_assoc()): ?>
+                                <tr>
+                                    <td><?php echo $counter++; ?></td>
+                                    <td><?php echo sanitize_output($order['full_name']); ?></td>
+                                    <td><?php echo sanitize_output($order['items_summary'] ?? 'No items found'); ?></td>
+                                    <td>Rs. <?php echo number_format((float)$order['total_amount'], 2); ?></td>
+                                    <td>
+                                        <span class="status-badge status-<?php echo sanitize_output($order['status']); ?>">
+                                            <?php echo sanitize_output(str_replace('_', ' ', $order['status'])); ?>
+                                        </span>
+                                    </td>
+                                    <td><?php echo sanitize_output(strtoupper($order['payment_method'])); ?></td>
+                                    <td>
+                                        <span class="payment-badge payment-<?php echo sanitize_output($order['payment_status']); ?>">
+                                            <?php echo sanitize_output(str_replace('_', ' ', $order['payment_status'])); ?>
+                                        </span>
+                                    </td>
+                                    <td><?php echo sanitize_output($order['created_at']); ?></td>
+                                    <td>
+                                        <div class="action-stack">
 
-                    <?php if ($orders && $orders->num_rows > 0): ?>
-                        <?php while ($order = $orders->fetch_assoc()): ?>
-                            <tr>
-                                <td>#<?php echo $order['order_id']; ?></td>
-                                <td><?php echo htmlspecialchars($order['full_name']); ?></td>
-                                <td><?php echo htmlspecialchars($order['items_summary'] ?? 'No items found'); ?></td>
-                                <td>Rs. <?php echo number_format((float)$order['total_amount'], 2); ?></td>
-                                <td>
-                                    <span class="status-badge status-<?php echo htmlspecialchars($order['status']); ?>">
-                                        <?php echo htmlspecialchars(str_replace('_', ' ', $order['status'])); ?>
-                                    </span>
-                                </td>
-                                <td><?php echo htmlspecialchars(strtoupper($order['payment_method'])); ?></td>
-                                <td>
-                                    <span class="payment-badge payment-<?php echo htmlspecialchars($order['payment_status']); ?>">
-                                        <?php echo htmlspecialchars(str_replace('_', ' ', $order['payment_status'])); ?>
-                                    </span>
-                                </td>
-                                <td><?php echo htmlspecialchars($order['created_at']); ?></td>
-                                <td>
-                                    <div class="action-stack">
-
-                                        <?php if ($order['status'] === 'ready'): ?>
-                                            <form method="POST">
-                                                <input type="hidden" name="order_id" value="<?php echo $order['order_id']; ?>">
-                                                <input type="hidden" name="new_status" value="out_for_delivery">
-                                                <button type="submit" name="update_delivery_status" class="staff-btn">
-                                                    Mark On Delivery
-                                                </button>
-                                            </form>
-
-                                        <?php elseif ($order['status'] === 'out_for_delivery'): ?>
-                                            <?php if ($order['payment_status'] === 'successful'): ?>
+                                            <?php if ($order['status'] === 'ready'): ?>
                                                 <form method="POST">
-                                                    <input type="hidden" name="order_id" value="<?php echo $order['order_id']; ?>">
-                                                    <input type="hidden" name="new_status" value="delivered">
+                                                    <input type="hidden" name="order_id" value="<?php echo sanitize_output($order['order_id']); ?>">
+                                                    <input type="hidden" name="new_status" value="out_for_delivery">
                                                     <button type="submit" name="update_delivery_status" class="staff-btn">
+                                                        Mark On Delivery
+                                                    </button>
+                                                </form>
+
+                                            <?php elseif ($order['status'] === 'out_for_delivery'): ?>
+                                                <?php if ($order['payment_status'] === 'successful'): ?>
+                                                    <form method="POST">
+                                                        <input type="hidden" name="order_id" value="<?php echo sanitize_output($order['order_id']); ?>">
+                                                        <input type="hidden" name="new_status" value="delivered">
+                                                        <button type="submit" name="update_delivery_status" class="staff-btn">
+                                                            Mark Delivered
+                                                        </button>
+                                                    </form>
+                                                <?php else: ?>
+                                                    <button type="button" class="staff-btn" disabled>
                                                         Mark Delivered
                                                     </button>
-                                                </form>
+                                                    <span class="muted-text">Confirm payment first</span>
+                                                <?php endif; ?>
+
                                             <?php else: ?>
-                                                <button type="button" class="staff-btn" disabled>
-                                                    Mark Delivered
-                                                </button>
-                                                <span class="muted-text">Confirm payment first</span>
+                                                <span class="muted-text">Delivery complete</span>
                                             <?php endif; ?>
 
-                                        <?php else: ?>
-                                            <span class="muted-text">Delivery complete</span>
-                                        <?php endif; ?>
+                                            <?php if ($order['payment_method'] === 'cod'): ?>
+                                                <?php if ($order['status'] === 'out_for_delivery' && in_array($order['payment_status'], ['pending', 'missing'], true)): ?>
+                                                    <form method="POST">
+                                                        <input type="hidden" name="order_id" value="<?php echo sanitize_output($order['order_id']); ?>">
+                                                        <button type="submit" name="confirm_cod_payment" class="staff-btn">
+                                                            Confirm COD Payment
+                                                        </button>
+                                                    </form>
+                                                <?php elseif ($order['payment_status'] === 'successful'): ?>
+                                                    <span class="muted-text">COD payment confirmed</span>
+                                                <?php else: ?>
+                                                    <span class="muted-text">COD payment pending</span>
+                                                <?php endif; ?>
 
-                                        <?php if ($order['payment_method'] === 'cod'): ?>
-                                            <?php if ($order['status'] === 'out_for_delivery' && in_array($order['payment_status'], ['pending', 'missing'], true)): ?>
-                                                <form method="POST">
-                                                    <input type="hidden" name="order_id" value="<?php echo $order['order_id']; ?>">
-                                                    <button type="submit" name="confirm_cod_payment" class="staff-btn">
-                                                        Confirm COD Payment
-                                                    </button>
-                                                </form>
-                                            <?php elseif ($order['payment_status'] === 'successful'): ?>
-                                                <span class="muted-text">COD payment confirmed</span>
                                             <?php else: ?>
-                                                <span class="muted-text">COD payment pending</span>
+                                                <?php if ($order['payment_status'] === 'successful'): ?>
+                                                    <span class="muted-text">Online payment completed</span>
+                                                <?php elseif ($order['payment_status'] === 'pending'): ?>
+                                                    <span class="muted-text">Waiting for online payment</span>
+                                                <?php elseif ($order['payment_status'] === 'missing'): ?>
+                                                    <span class="muted-text">No payment record</span>
+                                                <?php else: ?>
+                                                    <span class="muted-text">Payment not updatable</span>
+                                                <?php endif; ?>
                                             <?php endif; ?>
 
-                                        <?php else: ?>
-                                            <?php if ($order['payment_status'] === 'successful'): ?>
-                                                <span class="muted-text">Online payment completed</span>
-                                            <?php elseif ($order['payment_status'] === 'pending'): ?>
-                                                <span class="muted-text">Waiting for online payment</span>
-                                            <?php elseif ($order['payment_status'] === 'missing'): ?>
-                                                <span class="muted-text">No payment record</span>
-                                            <?php else: ?>
-                                                <span class="muted-text">Payment not updatable</span>
-                                            <?php endif; ?>
-                                        <?php endif; ?>
-
-                                    </div>
-                                </td>
+                                        </div>
+                                    </td>
+                                </tr>
+                            <?php endwhile; ?>
+                        <?php else: ?>
+                            <tr>
+                                <td colspan="9">No staff-side orders found.</td>
                             </tr>
-                        <?php endwhile; ?>
-                    <?php else: ?>
-                        <tr>
-                            <td colspan="9">No staff-side orders found.</td>
-                        </tr>
-                    <?php endif; ?>
+                        <?php endif; ?>
+                    </tbody>
                 </table>
             </div>
 

@@ -5,6 +5,67 @@ require_once "../includes/auth.php";
 
 require_role('chef');
 
+// Helper function for sanitizing input
+function sanitize_input($data) {
+    $data = trim($data);
+    $data = stripslashes($data);
+    $data = htmlspecialchars($data, ENT_QUOTES, 'UTF-8');
+    return $data;
+}
+
+// Helper function for validating and sanitizing text with max length
+function validate_text($input, $field_name, $max_length, &$errors, $required = true) {
+    $cleaned = trim($input);
+    
+    if ($required && empty($cleaned)) {
+        $errors[$field_name] = ucfirst($field_name) . " is required.";
+        return false;
+    }
+    
+    if (!empty($cleaned) && strlen($cleaned) > $max_length) {
+        $errors[$field_name] = ucfirst($field_name) . " cannot exceed " . $max_length . " characters.";
+        return false;
+    }
+    
+    // Sanitize XSS
+    $sanitized = htmlspecialchars($cleaned, ENT_QUOTES, 'UTF-8');
+    return $sanitized;
+}
+
+// Helper function for validating price
+function validate_price($price, &$errors) {
+    $cleaned = filter_var(trim($price), FILTER_VALIDATE_FLOAT);
+    
+    if ($cleaned === false || $cleaned <= 0) {
+        $errors['price'] = "Price must be a positive number greater than 0.";
+        return false;
+    }
+    
+    if ($cleaned > 999999.99) {
+        $errors['price'] = "Price cannot exceed 999,999.99.";
+        return false;
+    }
+    
+    return round($cleaned, 2);
+}
+
+// Helper function for validating rating
+function validate_rating($rating, &$errors) {
+    $cleaned = filter_var(trim($rating), FILTER_VALIDATE_FLOAT);
+    
+    if ($cleaned === false) {
+        $errors['rating'] = "Rating must be a valid number.";
+        return false;
+    }
+    
+    if ($cleaned < 0 || $cleaned > 5) {
+        $errors['rating'] = "Rating must be between 0 and 5.";
+        return false;
+    }
+    
+    return round($cleaned, 1);
+}
+
 function upload_category_image(array $file, array &$errors): ?string
 {
     if (!isset($file['error']) || $file['error'] === UPLOAD_ERR_NO_FILE) {
@@ -12,7 +73,7 @@ function upload_category_image(array $file, array &$errors): ?string
     }
 
     if ($file['error'] !== UPLOAD_ERR_OK) {
-        $errors[] = "Image upload failed.";
+        $errors['image'] = "Image upload failed.";
         return null;
     }
 
@@ -20,13 +81,19 @@ function upload_category_image(array $file, array &$errors): ?string
     $extension = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
 
     if (!in_array($extension, $allowed_extensions, true)) {
-        $errors[] = "Only JPG, JPEG, PNG, and WEBP images are allowed.";
+        $errors['image'] = "Only JPG, JPEG, PNG, and WEBP images are allowed.";
+        return null;
+    }
+
+    // Validate file size (max 5MB)
+    if ($file['size'] > 5 * 1024 * 1024) {
+        $errors['image'] = "Image size cannot exceed 5MB.";
         return null;
     }
 
     $image_info = @getimagesize($file['tmp_name']);
     if ($image_info === false) {
-        $errors[] = "Uploaded file is not a valid image.";
+        $errors['image'] = "Uploaded file is not a valid image.";
         return null;
     }
 
@@ -40,7 +107,7 @@ function upload_category_image(array $file, array &$errors): ?string
     $target_path = $upload_dir . $new_filename;
 
     if (!move_uploaded_file($file['tmp_name'], $target_path)) {
-        $errors[] = "Failed to save uploaded image.";
+        $errors['image'] = "Failed to save uploaded image.";
         return null;
     }
 
@@ -62,21 +129,29 @@ function delete_old_category_image(?string $image_path): void
 }
 
 $message = '';
-$errors = [];
+$errors = []; // Now associative array for inline errors
 $edit_item = null;
 $edit_category = null;
+$form_data = []; // Preserve form data on error
 
 /* ---------------------------
    HANDLE ADD CATEGORY
 ---------------------------- */
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_category'])) {
-    $category_name = trim($_POST['category_name'] ?? '');
-    $category_description = trim($_POST['category_description'] ?? '');
-    $category_is_available = isset($_POST['category_is_available']) ? 1 : 0;
-
-    if ($category_name === '') {
-        $errors[] = "Category name is required.";
+    $form_data['category_name'] = $_POST['category_name'] ?? '';
+    $form_data['category_description'] = $_POST['category_description'] ?? '';
+    $form_data['category_is_available'] = isset($_POST['category_is_available']);
+    
+    // Validate and sanitize category name
+    $category_name = validate_text($_POST['category_name'] ?? '', 'category name', 100, $errors, true);
+    
+    // Validate and sanitize description (optional, max 500 chars)
+    $category_description = validate_text($_POST['category_description'] ?? '', 'description', 500, $errors, false);
+    if ($category_description === false) {
+        $category_description = ''; // Optional field, so empty if validation fails
     }
+    
+    $category_is_available = isset($_POST['category_is_available']) ? 1 : 0;
 
     $category_image_url = upload_category_image($_FILES['category_image'] ?? [], $errors);
 
@@ -89,8 +164,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_category'])) {
 
         if ($stmt->execute()) {
             $message = "Category added successfully.";
+            $form_data = []; // Clear form data on success
         } else {
-            $errors[] = "Failed to add category. Category name may already exist.";
+            $errors['general'] = "Failed to add category. Category name may already exist.";
         }
 
         $stmt->close();
@@ -101,8 +177,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_category'])) {
    LOAD CATEGORY FOR EDIT
 ---------------------------- */
 if (isset($_GET['edit_category_id'])) {
-    $edit_category_id = (int) $_GET['edit_category_id'];
-
+    $edit_category_id = filter_var($_GET['edit_category_id'], FILTER_VALIDATE_INT);
+    
     if ($edit_category_id > 0) {
         $stmt = $conn->prepare("SELECT * FROM categories WHERE category_id = ?");
         $stmt->bind_param("i", $edit_category_id);
@@ -116,18 +192,22 @@ if (isset($_GET['edit_category_id'])) {
    HANDLE UPDATE CATEGORY
 ---------------------------- */
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_category'])) {
-    $category_id = (int) ($_POST['category_id'] ?? 0);
-    $category_name = trim($_POST['category_name'] ?? '');
-    $category_description = trim($_POST['category_description'] ?? '');
+    $category_id = filter_var($_POST['category_id'] ?? 0, FILTER_VALIDATE_INT);
+    
+    // Validate and sanitize category name
+    $category_name = validate_text($_POST['category_name'] ?? '', 'category name', 100, $errors, true);
+    
+    // Validate and sanitize description
+    $category_description = validate_text($_POST['category_description'] ?? '', 'description', 500, $errors, false);
+    if ($category_description === false) {
+        $category_description = '';
+    }
+    
     $category_is_available = isset($_POST['category_is_available']) ? 1 : 0;
     $current_image = $_POST['current_image'] ?? '';
 
-    if ($category_id <= 0) {
-        $errors[] = "Invalid category.";
-    }
-
-    if ($category_name === '') {
-        $errors[] = "Category name is required.";
+    if ($category_id === false || $category_id <= 0) {
+        $errors['general'] = "Invalid category.";
     }
 
     $new_uploaded_image = upload_category_image($_FILES['category_image'] ?? [], $errors);
@@ -152,7 +232,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_category'])) {
             $message = "Category updated successfully.";
             $edit_category = null;
         } else {
-            $errors[] = "Failed to update category.";
+            $errors['general'] = "Failed to update category.";
         }
 
         $stmt->close();
@@ -163,24 +243,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_category'])) {
    HANDLE ADD MENU ITEM
 ---------------------------- */
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_item'])) {
-    $category_id  = (int)($_POST['category_id'] ?? 0);
-    $name         = trim($_POST['name'] ?? '');
-    $description  = trim($_POST['description'] ?? '');
-    $price        = (float)($_POST['price'] ?? 0);
-    $rating       = (float)($_POST['rating'] ?? 0);
+    $form_data['category_id'] = $_POST['category_id'] ?? '';
+    $form_data['name'] = $_POST['name'] ?? '';
+    $form_data['description'] = $_POST['description'] ?? '';
+    $form_data['price'] = $_POST['price'] ?? '';
+    $form_data['rating'] = $_POST['rating'] ?? '';
+    $form_data['is_available'] = isset($_POST['is_available']);
+    
+    $category_id = filter_var($_POST['category_id'] ?? 0, FILTER_VALIDATE_INT);
+    $name = validate_text($_POST['name'] ?? '', 'item name', 150, $errors, true);
+    $description = validate_text($_POST['description'] ?? '', 'description', 500, $errors, false);
+    if ($description === false) {
+        $description = '';
+    }
+    $price = validate_price($_POST['price'] ?? 0, $errors);
+    $rating = validate_rating($_POST['rating'] ?? 0, $errors);
     $is_available = isset($_POST['is_available']) ? 1 : 0;
 
-    if ($category_id <= 0) {
-        $errors[] = "Please select a category.";
-    }
-    if ($name === '') {
-        $errors[] = "Item name is required.";
-    }
-    if ($price <= 0) {
-        $errors[] = "Price must be greater than 0.";
-    }
-    if ($rating < 0 || $rating > 5) {
-        $errors[] = "Rating must be between 0 and 5.";
+    if ($category_id === false || $category_id <= 0) {
+        $errors['category_id'] = "Please select a valid category.";
     }
 
     if (empty($errors)) {
@@ -192,8 +273,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_item'])) {
 
         if ($stmt->execute()) {
             $message = "Menu item added successfully.";
+            $form_data = []; // Clear form data on success
         } else {
-            $errors[] = "Failed to add menu item.";
+            $errors['general'] = "Failed to add menu item.";
         }
 
         $stmt->close();
@@ -204,7 +286,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_item'])) {
    HANDLE DELETE MENU ITEM
 ---------------------------- */
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_item'])) {
-    $item_id = (int)($_POST['item_id'] ?? 0);
+    $item_id = filter_var($_POST['item_id'] ?? 0, FILTER_VALIDATE_INT);
 
     if ($item_id > 0) {
         $stmt = $conn->prepare("DELETE FROM menu_items WHERE item_id = ?");
@@ -213,7 +295,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_item'])) {
         if ($stmt->execute()) {
             $message = "Menu item deleted successfully.";
         } else {
-            $errors[] = "Failed to delete menu item.";
+            $errors['general'] = "Failed to delete menu item.";
         }
 
         $stmt->close();
@@ -224,7 +306,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_item'])) {
    LOAD ITEM FOR EDIT
 ---------------------------- */
 if (isset($_GET['edit_id'])) {
-    $edit_id = (int)$_GET['edit_id'];
+    $edit_id = filter_var($_GET['edit_id'], FILTER_VALIDATE_INT);
 
     if ($edit_id > 0) {
         $stmt = $conn->prepare("SELECT * FROM menu_items WHERE item_id = ?");
@@ -239,28 +321,23 @@ if (isset($_GET['edit_id'])) {
    HANDLE UPDATE MENU ITEM
 ---------------------------- */
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_item'])) {
-    $item_id       = (int)($_POST['item_id'] ?? 0);
-    $category_id   = (int)($_POST['category_id'] ?? 0);
-    $name          = trim($_POST['name'] ?? '');
-    $description   = trim($_POST['description'] ?? '');
-    $price         = (float)($_POST['price'] ?? 0);
-    $rating        = (float)($_POST['rating'] ?? 0);
-    $is_available  = isset($_POST['is_available']) ? 1 : 0;
+    $item_id = filter_var($_POST['item_id'] ?? 0, FILTER_VALIDATE_INT);
+    $category_id = filter_var($_POST['category_id'] ?? 0, FILTER_VALIDATE_INT);
+    $name = validate_text($_POST['name'] ?? '', 'item name', 150, $errors, true);
+    $description = validate_text($_POST['description'] ?? '', 'description', 500, $errors, false);
+    if ($description === false) {
+        $description = '';
+    }
+    $price = validate_price($_POST['price'] ?? 0, $errors);
+    $rating = validate_rating($_POST['rating'] ?? 0, $errors);
+    $is_available = isset($_POST['is_available']) ? 1 : 0;
 
-    if ($item_id <= 0) {
-        $errors[] = "Invalid menu item.";
+    if ($item_id === false || $item_id <= 0) {
+        $errors['general'] = "Invalid menu item.";
     }
-    if ($category_id <= 0) {
-        $errors[] = "Please select a category.";
-    }
-    if ($name === '') {
-        $errors[] = "Item name is required.";
-    }
-    if ($price <= 0) {
-        $errors[] = "Price must be greater than 0.";
-    }
-    if ($rating < 0 || $rating > 5) {
-        $errors[] = "Rating must be between 0 and 5.";
+    
+    if ($category_id === false || $category_id <= 0) {
+        $errors['category_id'] = "Please select a valid category.";
     }
 
     if (empty($errors)) {
@@ -275,7 +352,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_item'])) {
             $message = "Menu item updated successfully.";
             $edit_item = null;
         } else {
-            $errors[] = "Failed to update menu item.";
+            $errors['general'] = "Failed to update menu item.";
         }
 
         $stmt->close();
@@ -286,8 +363,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_item'])) {
    HANDLE ORDER STATUS UPDATE
 ---------------------------- */
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_order_status'])) {
-    $order_id   = (int)($_POST['order_id'] ?? 0);
-    $new_status = $_POST['new_status'] ?? '';
+    $order_id = filter_var($_POST['order_id'] ?? 0, FILTER_VALIDATE_INT);
+    $new_status = sanitize_input($_POST['new_status'] ?? '');
 
     if ($order_id > 0 && in_array($new_status, ['preparing', 'ready'], true)) {
         $stmt = $conn->prepare("SELECT status FROM orders WHERE order_id = ?");
@@ -310,18 +387,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_order_status']
                 if ($stmt->execute()) {
                     $message = "Order status updated successfully.";
                 } else {
-                    $errors[] = "Failed to update order status.";
+                    $errors['general'] = "Failed to update order status.";
                 }
 
                 $stmt->close();
             } else {
-                $errors[] = "Invalid status transition for chef.";
+                $errors['general'] = "Invalid status transition for chef.";
             }
         } else {
-            $errors[] = "Order not found.";
+            $errors['general'] = "Order not found.";
         }
     } else {
-        $errors[] = "Invalid status update request.";
+        $errors['general'] = "Invalid status update request.";
     }
 }
 
@@ -377,7 +454,7 @@ $orders = $conn->query("
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Chef Control Panel</title>
-    <link rel="stylesheet" href="../assets/css/dashboard.css">
+    <link rel="stylesheet" href="../assets/css/style.css">
 
     <style>
         :root {
@@ -472,9 +549,18 @@ $orders = $conn->query("
             color: #222 !important;
         }
 
-        .chef-form-grid textarea {
-            min-height: 100px;
-            resize: vertical;
+        .chef-form-grid input.error,
+        .chef-form-grid select.error,
+        .chef-form-grid textarea.error {
+            border-color: #dc3545;
+            background-color: #fff8f8;
+        }
+
+        .error-message {
+            color: #dc3545;
+            font-size: 12px;
+            margin-top: 5px;
+            display: block;
         }
 
         .chef-form-grid input::placeholder,
@@ -644,7 +730,7 @@ $orders = $conn->query("
 
         <div class="topbar">
             <div style="font-weight:600;">
-                Welcome, <?php echo htmlspecialchars($_SESSION['full_name']); ?>
+                Welcome, <?php echo htmlspecialchars($_SESSION['full_name'], ENT_QUOTES, 'UTF-8'); ?>
             </div>
         </div>
 
@@ -656,48 +742,56 @@ $orders = $conn->query("
             </div>
 
             <?php if ($message !== ''): ?>
-                <div class="alert-success"><?php echo htmlspecialchars($message); ?></div>
+                <div class="alert-success"><?php echo htmlspecialchars($message, ENT_QUOTES, 'UTF-8'); ?></div>
             <?php endif; ?>
 
-            <?php if (!empty($errors)): ?>
-                <?php foreach ($errors as $error): ?>
-                    <div class="alert-error"><?php echo htmlspecialchars($error); ?></div>
-                <?php endforeach; ?>
+            <?php if (isset($errors['general'])): ?>
+                <div class="alert-error"><?php echo htmlspecialchars($errors['general'], ENT_QUOTES, 'UTF-8'); ?></div>
             <?php endif; ?>
 
             <div class="panel-card" id="categories-section">
                 <h3><?php echo $edit_category ? 'Edit Category' : 'Add Category'; ?></h3>
 
-                <form method="POST" enctype="multipart/form-data">
+                <form method="POST" enctype="multipart/form-data" novalidate>
                     <?php if ($edit_category): ?>
-                        <input type="hidden" name="category_id" value="<?php echo $edit_category['category_id']; ?>">
-                        <input type="hidden" name="current_image" value="<?php echo htmlspecialchars($edit_category['image_url'] ?? ''); ?>">
+                        <input type="hidden" name="category_id" value="<?php echo htmlspecialchars($edit_category['category_id'], ENT_QUOTES, 'UTF-8'); ?>">
+                        <input type="hidden" name="current_image" value="<?php echo htmlspecialchars($edit_category['image_url'] ?? '', ENT_QUOTES, 'UTF-8'); ?>">
                     <?php endif; ?>
 
                     <div class="chef-form-grid">
                         <div>
-                            <label>Category Name</label>
+                            <label>Category Name *</label>
                             <input
                                 type="text"
                                 name="category_name"
                                 required
-                                value="<?php echo htmlspecialchars($edit_category['name'] ?? ''); ?>"
+                                class="<?php echo isset($errors['category name']) ? 'error' : ''; ?>"
+                                value="<?php echo htmlspecialchars($edit_category['name'] ?? $form_data['category_name'] ?? '', ENT_QUOTES, 'UTF-8'); ?>"
                             >
+                            <?php if (isset($errors['category name'])): ?>
+                                <span class="error-message"><?php echo htmlspecialchars($errors['category name'], ENT_QUOTES, 'UTF-8'); ?></span>
+                            <?php endif; ?>
                         </div>
 
                         <div>
-                            <label>Category Image</label>
-                            <input type="file" name="category_image" accept=".jpg,.jpeg,.png,.webp">
+                            <label>Category Image (Max 5MB, JPG, PNG, WEBP)</label>
+                            <input type="file" name="category_image" accept=".jpg,.jpeg,.png,.webp" class="<?php echo isset($errors['image']) ? 'error' : ''; ?>">
+                            <?php if (isset($errors['image'])): ?>
+                                <span class="error-message"><?php echo htmlspecialchars($errors['image'], ENT_QUOTES, 'UTF-8'); ?></span>
+                            <?php endif; ?>
                             <?php if ($edit_category && !empty($edit_category['image_url'])): ?>
                                 <div class="current-image-preview">
-                                    <img src="<?php echo htmlspecialchars($edit_category['image_url']); ?>" alt="Current Category Image">
+                                    <img src="<?php echo htmlspecialchars($edit_category['image_url'], ENT_QUOTES, 'UTF-8'); ?>" alt="Current Category Image">
                                 </div>
                             <?php endif; ?>
                         </div>
 
                         <div class="full">
-                            <label>Description</label>
-                            <textarea name="category_description"><?php echo htmlspecialchars($edit_category['description'] ?? ''); ?></textarea>
+                            <label>Description (Max 500 characters)</label>
+                            <textarea name="category_description" class="<?php echo isset($errors['description']) ? 'error' : ''; ?>"><?php echo htmlspecialchars($edit_category['description'] ?? $form_data['category_description'] ?? '', ENT_QUOTES, 'UTF-8'); ?></textarea>
+                            <?php if (isset($errors['description'])): ?>
+                                <span class="error-message"><?php echo htmlspecialchars($errors['description'], ENT_QUOTES, 'UTF-8'); ?></span>
+                            <?php endif; ?>
                         </div>
 
                         <div class="full">
@@ -706,7 +800,7 @@ $orders = $conn->query("
                                     type="checkbox"
                                     name="category_is_available"
                                     value="1"
-                                    <?php echo ($edit_category ? ((int)$edit_category['is_available'] === 1 ? 'checked' : '') : 'checked'); ?>
+                                    <?php echo ($edit_category ? ((int)$edit_category['is_available'] === 1 ? 'checked' : '') : (isset($form_data['category_is_available']) && $form_data['category_is_available'] ? 'checked' : 'checked')); ?>
                                 >
                                 Available
                             </label>
@@ -737,22 +831,23 @@ $orders = $conn->query("
                     </tr>
 
                     <?php if ($category_list && $category_list->num_rows > 0): ?>
+                        <?php $counter = 1; ?>
                         <?php while ($cat = $category_list->fetch_assoc()): ?>
                             <tr>
-                                <td><?php echo $cat['category_id']; ?></td>
+                                <td><?php echo $counter++; ?></td>
                                 <td>
                                     <?php if (!empty($cat['image_url'])): ?>
-                                        <img src="<?php echo htmlspecialchars($cat['image_url']); ?>" alt="Category Image" class="category-thumb">
+                                        <img src="<?php echo htmlspecialchars($cat['image_url'], ENT_QUOTES, 'UTF-8'); ?>" alt="Category Image" class="category-thumb">
                                     <?php else: ?>
                                         No image
                                     <?php endif; ?>
                                 </td>
-                                <td><?php echo htmlspecialchars($cat['name']); ?></td>
-                                <td><?php echo htmlspecialchars($cat['description']); ?></td>
+                                <td><?php echo htmlspecialchars($cat['name'], ENT_QUOTES, 'UTF-8'); ?></td>
+                                <td><?php echo htmlspecialchars($cat['description'], ENT_QUOTES, 'UTF-8'); ?></td>
                                 <td><?php echo ((int)$cat['is_available'] === 1) ? 'Yes' : 'No'; ?></td>
                                 <td>
                                     <div class="action-links">
-                                        <a href="chef-control.php?edit_category_id=<?php echo $cat['category_id']; ?>">Edit</a>
+                                        <a href="chef-control.php?edit_category_id=<?php echo htmlspecialchars($cat['category_id'], ENT_QUOTES, 'UTF-8'); ?>">Edit</a>
                                     </div>
                                 </td>
                             </tr>
@@ -768,64 +863,89 @@ $orders = $conn->query("
             <div class="panel-card">
                 <h3><?php echo $edit_item ? 'Edit Menu Item' : 'Add Menu Item'; ?></h3>
 
-                <form method="POST">
+                <form method="POST" novalidate>
                     <?php if ($edit_item): ?>
-                        <input type="hidden" name="item_id" value="<?php echo $edit_item['item_id']; ?>">
+                        <input type="hidden" name="item_id" value="<?php echo htmlspecialchars($edit_item['item_id'], ENT_QUOTES, 'UTF-8'); ?>">
                     <?php endif; ?>
 
                     <div class="chef-form-grid">
                         <div>
-                            <label>Category</label>
-                            <select name="category_id" required>
+                            <label>Category *</label>
+                            <select name="category_id" required class="<?php echo isset($errors['category_id']) ? 'error' : ''; ?>">
                                 <option value="">Select Category</option>
                                 <?php if ($category_options && $category_options->num_rows > 0): ?>
                                     <?php while ($category = $category_options->fetch_assoc()): ?>
-                                        <?php $selected = ($edit_item && $edit_item['category_id'] == $category['category_id']) ? 'selected' : ''; ?>
-                                        <option value="<?php echo $category['category_id']; ?>" <?php echo $selected; ?>>
-                                            <?php echo htmlspecialchars($category['name']); ?>
+                                        <?php 
+                                        $selected = false;
+                                        if ($edit_item && $edit_item['category_id'] == $category['category_id']) {
+                                            $selected = true;
+                                        } elseif (isset($form_data['category_id']) && $form_data['category_id'] == $category['category_id']) {
+                                            $selected = true;
+                                        }
+                                        ?>
+                                        <option value="<?php echo htmlspecialchars($category['category_id'], ENT_QUOTES, 'UTF-8'); ?>" <?php echo $selected ? 'selected' : ''; ?>>
+                                            <?php echo htmlspecialchars($category['name'], ENT_QUOTES, 'UTF-8'); ?>
                                         </option>
                                     <?php endwhile; ?>
                                 <?php endif; ?>
                             </select>
+                            <?php if (isset($errors['category_id'])): ?>
+                                <span class="error-message"><?php echo htmlspecialchars($errors['category_id'], ENT_QUOTES, 'UTF-8'); ?></span>
+                            <?php endif; ?>
                         </div>
 
                         <div>
-                            <label>Item Name</label>
+                            <label>Item Name * (Max 150 characters)</label>
                             <input
                                 type="text"
                                 name="name"
                                 required
-                                value="<?php echo htmlspecialchars($edit_item['name'] ?? ''); ?>"
+                                class="<?php echo isset($errors['item name']) ? 'error' : ''; ?>"
+                                value="<?php echo htmlspecialchars($edit_item['name'] ?? $form_data['name'] ?? '', ENT_QUOTES, 'UTF-8'); ?>"
                             >
+                            <?php if (isset($errors['item name'])): ?>
+                                <span class="error-message"><?php echo htmlspecialchars($errors['item name'], ENT_QUOTES, 'UTF-8'); ?></span>
+                            <?php endif; ?>
                         </div>
 
                         <div class="full">
-                            <label>Description</label>
-                            <textarea name="description"><?php echo htmlspecialchars($edit_item['description'] ?? ''); ?></textarea>
+                            <label>Description (Max 500 characters)</label>
+                            <textarea name="description" class="<?php echo isset($errors['description']) ? 'error' : ''; ?>"><?php echo htmlspecialchars($edit_item['description'] ?? $form_data['description'] ?? '', ENT_QUOTES, 'UTF-8'); ?></textarea>
+                            <?php if (isset($errors['description'])): ?>
+                                <span class="error-message"><?php echo htmlspecialchars($errors['description'], ENT_QUOTES, 'UTF-8'); ?></span>
+                            <?php endif; ?>
                         </div>
 
                         <div>
-                            <label>Price</label>
+                            <label>Price * (Positive number)</label>
                             <input
                                 type="number"
                                 name="price"
                                 step="0.01"
                                 min="0.01"
                                 required
-                                value="<?php echo htmlspecialchars($edit_item['price'] ?? ''); ?>"
+                                class="<?php echo isset($errors['price']) ? 'error' : ''; ?>"
+                                value="<?php echo htmlspecialchars($edit_item['price'] ?? $form_data['price'] ?? '', ENT_QUOTES, 'UTF-8'); ?>"
                             >
+                            <?php if (isset($errors['price'])): ?>
+                                <span class="error-message"><?php echo htmlspecialchars($errors['price'], ENT_QUOTES, 'UTF-8'); ?></span>
+                            <?php endif; ?>
                         </div>
 
                         <div>
-                            <label>Rating</label>
+                            <label>Rating (0 to 5)</label>
                             <input
                                 type="number"
                                 name="rating"
                                 step="0.1"
                                 min="0"
                                 max="5"
-                                value="<?php echo htmlspecialchars($edit_item['rating'] ?? '0'); ?>"
+                                class="<?php echo isset($errors['rating']) ? 'error' : ''; ?>"
+                                value="<?php echo htmlspecialchars($edit_item['rating'] ?? $form_data['rating'] ?? '0', ENT_QUOTES, 'UTF-8'); ?>"
                             >
+                            <?php if (isset($errors['rating'])): ?>
+                                <span class="error-message"><?php echo htmlspecialchars($errors['rating'], ENT_QUOTES, 'UTF-8'); ?></span>
+                            <?php endif; ?>
                         </div>
 
                         <div class="full">
@@ -834,7 +954,7 @@ $orders = $conn->query("
                                     type="checkbox"
                                     name="is_available"
                                     value="1"
-                                    <?php echo ($edit_item ? ((int)$edit_item['is_available'] === 1 ? 'checked' : '') : 'checked'); ?>
+                                    <?php echo ($edit_item ? ((int)$edit_item['is_available'] === 1 ? 'checked' : '') : (isset($form_data['is_available']) && $form_data['is_available'] ? 'checked' : 'checked')); ?>
                                 >
                                 Available
                             </label>
@@ -867,21 +987,22 @@ $orders = $conn->query("
                     </tr>
 
                     <?php if ($menu_items && $menu_items->num_rows > 0): ?>
+                        <?php $counter = 1; ?>
                         <?php while ($item = $menu_items->fetch_assoc()): ?>
                             <tr>
-                                <td><?php echo $item['item_id']; ?></td>
-                                <td><?php echo htmlspecialchars($item['category_name']); ?></td>
-                                <td><?php echo htmlspecialchars($item['name']); ?></td>
-                                <td><?php echo htmlspecialchars($item['description']); ?></td>
+                                <td><?php echo $counter++; ?></td>
+                                <td><?php echo htmlspecialchars($item['category_name'], ENT_QUOTES, 'UTF-8'); ?></td>
+                                <td><?php echo htmlspecialchars($item['name'], ENT_QUOTES, 'UTF-8'); ?></td>
+                                <td><?php echo htmlspecialchars($item['description'], ENT_QUOTES, 'UTF-8'); ?></td>
                                 <td>Rs. <?php echo number_format((float)$item['price'], 2); ?></td>
                                 <td><?php echo number_format((float)$item['rating'], 1); ?></td>
                                 <td><?php echo ((int)$item['is_available'] === 1) ? 'Yes' : 'No'; ?></td>
                                 <td>
                                     <div class="action-links">
-                                        <a href="chef-control.php?edit_id=<?php echo $item['item_id']; ?>">Edit</a>
+                                        <a href="chef-control.php?edit_id=<?php echo htmlspecialchars($item['item_id'], ENT_QUOTES, 'UTF-8'); ?>">Edit</a>
 
                                         <form method="POST" onsubmit="return confirm('Delete this item?');" style="display:inline;">
-                                            <input type="hidden" name="item_id" value="<?php echo $item['item_id']; ?>">
+                                            <input type="hidden" name="item_id" value="<?php echo htmlspecialchars($item['item_id'], ENT_QUOTES, 'UTF-8'); ?>">
                                             <button type="submit" name="delete_item" class="chef-btn">Delete</button>
                                         </form>
                                     </div>
@@ -901,7 +1022,7 @@ $orders = $conn->query("
 
                 <table class="chef-table">
                     <tr>
-                        <th>Order ID</th>
+                        <th>ID</th>
                         <th>Customer</th>
                         <th>Total Amount</th>
                         <th>Status</th>
@@ -910,27 +1031,28 @@ $orders = $conn->query("
                     </tr>
 
                     <?php if ($orders && $orders->num_rows > 0): ?>
+                        <?php $counter = 1; ?>
                         <?php while ($order = $orders->fetch_assoc()): ?>
                             <tr>
-                                <td>#<?php echo $order['order_id']; ?></td>
-                                <td><?php echo htmlspecialchars($order['full_name']); ?></td>
+                                <td><?php echo $counter++; ?></td>
+                                <td><?php echo htmlspecialchars($order['full_name'], ENT_QUOTES, 'UTF-8'); ?></td>
                                 <td>Rs. <?php echo number_format((float)$order['total_amount'], 2); ?></td>
                                 <td>
-                                    <span class="status-badge status-<?php echo htmlspecialchars($order['status']); ?>">
-                                        <?php echo htmlspecialchars($order['status']); ?>
+                                    <span class="status-badge status-<?php echo htmlspecialchars($order['status'], ENT_QUOTES, 'UTF-8'); ?>">
+                                        <?php echo htmlspecialchars($order['status'], ENT_QUOTES, 'UTF-8'); ?>
                                     </span>
                                 </td>
-                                <td><?php echo htmlspecialchars($order['created_at']); ?></td>
+                                <td><?php echo htmlspecialchars($order['created_at'], ENT_QUOTES, 'UTF-8'); ?></td>
                                 <td>
                                     <?php if ($order['status'] === 'pending'): ?>
                                         <form method="POST">
-                                            <input type="hidden" name="order_id" value="<?php echo $order['order_id']; ?>">
+                                            <input type="hidden" name="order_id" value="<?php echo htmlspecialchars($order['order_id'], ENT_QUOTES, 'UTF-8'); ?>">
                                             <input type="hidden" name="new_status" value="preparing">
                                             <button type="submit" name="update_order_status" class="chef-btn">Mark Preparing</button>
                                         </form>
                                     <?php elseif ($order['status'] === 'preparing'): ?>
                                         <form method="POST">
-                                            <input type="hidden" name="order_id" value="<?php echo $order['order_id']; ?>">
+                                            <input type="hidden" name="order_id" value="<?php echo htmlspecialchars($order['order_id'], ENT_QUOTES, 'UTF-8'); ?>">
                                             <input type="hidden" name="new_status" value="ready">
                                             <button type="submit" name="update_order_status" class="chef-btn">Mark Ready</button>
                                         </form>
