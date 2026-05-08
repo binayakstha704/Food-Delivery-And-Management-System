@@ -9,7 +9,7 @@ require_once "../includes/functions.php";
 /* ============================================================
    RATE LIMIT CHECK 
    ─────────────────────────────────────────────────────────────
-   We check the database-backed rate limit BEFORE processing
+   We checkthe database-backed rate limit BEFORE processing
    any POST data so a locked-out IP never reaches the
    password_verify() call.
    ============================================================ */
