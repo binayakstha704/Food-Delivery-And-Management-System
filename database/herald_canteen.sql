@@ -123,7 +123,7 @@ CREATE TABLE notifications (
 -- login_attempts
 -- Stores one row per failed login attempt per IP address.
 -- Used by the rate-limiting logic in functions.php (SCRUM-53).
--- Rows are automatically purged by is_rate_limited() so the
+-- Rows are automatically purged by is_rate_limited() sothe
 -- table stays small without needing a scheduled cleanup job.
 -- ──────────────────────────────────────────────────────────────────────────────
 CREATE TABLE login_attempts (
