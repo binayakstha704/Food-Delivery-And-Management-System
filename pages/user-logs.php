@@ -1,78 +1,195 @@
 <?php
 require_once "../includes/auth.php";
-configure_secure_session();
-session_start();
+start_session();
 session_security_check();
 require_once "../config/db.php";
+require_once "../includes/functions.php";
 
-// Only admin/chef/staff can view logs
+// ── Access control: only chef and staff can view logs ─────────────────────────
 require_login();
-$allowed_roles = ['chef', 'staff'];
-if (!in_array($_SESSION['role'] ?? '', $allowed_roles, true)) {
+
+$current_role = $_SESSION['role'] ?? '';
+if (!in_array($current_role, ['chef', 'staff'], true)) {
+    // Log the access denial before redirecting
+    log_user_event(
+        $conn,
+        'access_denied',
+        $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0',
+        "Unauthorised access attempt to user-logs.php by user_id " . ($_SESSION['user_id'] ?? 'unknown'),
+        isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : null
+    );
     header('Location: dashboard.php');
     exit;
 }
 
-// ── Filters ──────────────────────────────────────────────────
-$status_filter = trim($_GET['status'] ?? '');
-$date_filter   = trim($_GET['date']   ?? '');
-$search_filter = trim($_GET['search'] ?? '');
+$viewer_name = htmlspecialchars($_SESSION['full_name'] ?? 'User', ENT_QUOTES, 'UTF-8');
+$ip          = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
 
-// ── Build query from orders + users (activity logs) ──────────
-// We display login/order activity derived from the existing schema.
-// orders table gives us real user activity.
-$where = ['1=1'];
-$params = [];
-$types  = '';
+// ── Which tab is active? ──────────────────────────────────────────────────────
+// 'events' shows the user_logs table (login/logout/access events)
+// 'orders' shows the orders table (order activity)
+$active_tab = ($_GET['tab'] ?? 'events') === 'orders' ? 'orders' : 'events';
 
-if ($status_filter !== '') {
-    $allowed_statuses = ['pending','preparing','ready','out_for_delivery','delivered','cancelled'];
-    if (in_array($status_filter, $allowed_statuses, true)) {
-        $where[] = 'o.status = ?';
-        $params[] = $status_filter;
-        $types .= 's';
-    }
-}
-if ($date_filter !== '') {
-    $where[] = 'DATE(o.created_at) = ?';
-    $params[] = $date_filter;
-    $types .= 's';
-}
-if ($search_filter !== '') {
-    $where[] = '(u.full_name LIKE ? OR u.email LIKE ?)';
-    $like = '%' . $search_filter . '%';
-    $params[] = $like;
-    $params[] = $like;
-    $types .= 'ss';
+/* ============================================================
+   TAB 1: USER EVENT LOGS (user_logs table)
+   Filters: event_type, date, search (name or email via JOIN)
+   ============================================================ */
+$ev_type   = trim($_GET['event_type'] ?? '');
+$ev_date   = trim($_GET['ev_date']    ?? '');
+$ev_search = trim($_GET['ev_search']  ?? '');
+
+$ev_where  = ['1=1'];
+$ev_params = [];
+$ev_types  = '';
+
+// Filter by event type
+$allowed_events = ['login_success', 'login_failed', 'logout', 'access_denied'];
+if ($ev_type !== '' && in_array($ev_type, $allowed_events, true)) {
+    $ev_where[]  = 'ul.event_type = ?';
+    $ev_params[] = $ev_type;
+    $ev_types   .= 's';
 }
 
-$where_sql = implode(' AND ', $where);
-
-$sql = "SELECT o.order_id, u.full_name, u.email, o.total_amount,
-               o.status, o.payment_method, o.created_at
-        FROM orders o
-        JOIN users u ON u.user_id = o.user_id
-        WHERE $where_sql
-        ORDER BY o.created_at DESC
-        LIMIT 200";
-
-$stmt = $conn->prepare($sql);
-if (!empty($params)) {
-    $stmt->bind_param($types, ...$params);
+// Filter by date
+if ($ev_date !== '') {
+    $ev_where[]  = 'DATE(ul.created_at) = ?';
+    $ev_params[] = $ev_date;
+    $ev_types   .= 's';
 }
-$stmt->execute();
-$logs = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
-$stmt->close();
 
-$total_count = count($logs);
+// Filter by user name or email (LEFT JOIN because user_id can be NULL)
+if ($ev_search !== '') {
+    $ev_where[]  = '(u.full_name LIKE ? OR u.email LIKE ? OR ul.description LIKE ?)';
+    $like        = '%' . $ev_search . '%';
+    $ev_params[] = $like;
+    $ev_params[] = $like;
+    $ev_params[] = $like;
+    $ev_types   .= 'sss';
+}
 
-// Recent registrations for the summary cards
-$new_users_today = $conn->query("SELECT COUNT(*) FROM users WHERE DATE(created_at) = CURDATE()")->fetch_row()[0] ?? 0;
+$ev_where_sql = implode(' AND ', $ev_where);
+
+$ev_sql = "SELECT
+               ul.log_id,
+               ul.event_type,
+               ul.ip_address,
+               ul.description,
+               ul.created_at,
+               u.full_name,
+               u.email,
+               u.role
+           FROM user_logs ul
+           LEFT JOIN users u ON u.user_id = ul.user_id
+           WHERE {$ev_where_sql}
+           ORDER BY ul.created_at DESC
+           LIMIT 300";
+
+$ev_stmt = $conn->prepare($ev_sql);
+if (!empty($ev_params)) {
+    $ev_stmt->bind_param($ev_types, ...$ev_params);
+}
+$ev_stmt->execute();
+$event_logs = $ev_stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+$ev_stmt->close();
+
+// Summary counts for the event log cards
+$logins_today  = $conn->query("SELECT COUNT(*) FROM user_logs WHERE event_type = 'login_success' AND DATE(created_at) = CURDATE()")->fetch_row()[0] ?? 0;
+$failures_today= $conn->query("SELECT COUNT(*) FROM user_logs WHERE event_type = 'login_failed'  AND DATE(created_at) = CURDATE()")->fetch_row()[0] ?? 0;
+$logouts_today = $conn->query("SELECT COUNT(*) FROM user_logs WHERE event_type = 'logout'        AND DATE(created_at) = CURDATE()")->fetch_row()[0] ?? 0;
+$denied_today  = $conn->query("SELECT COUNT(*) FROM user_logs WHERE event_type = 'access_denied' AND DATE(created_at) = CURDATE()")->fetch_row()[0] ?? 0;
+
+/* ============================================================
+   TAB 2: ORDER ACTIVITY LOGS (orders table)
+   Filters: status, date, search (name or email)
+   ============================================================ */
+$ord_status = trim($_GET['status'] ?? '');
+$ord_date   = trim($_GET['date']   ?? '');
+$ord_search = trim($_GET['search'] ?? '');
+
+$ord_where  = ['1=1'];
+$ord_params = [];
+$ord_types  = '';
+
+$allowed_statuses = ['pending','preparing','ready','out_for_delivery','delivered','cancelled'];
+if ($ord_status !== '' && in_array($ord_status, $allowed_statuses, true)) {
+    $ord_where[]  = 'o.status = ?';
+    $ord_params[] = $ord_status;
+    $ord_types   .= 's';
+}
+if ($ord_date !== '') {
+    $ord_where[]  = 'DATE(o.created_at) = ?';
+    $ord_params[] = $ord_date;
+    $ord_types   .= 's';
+}
+if ($ord_search !== '') {
+    $ord_where[]  = '(u.full_name LIKE ? OR u.email LIKE ?)';
+    $like         = '%' . $ord_search . '%';
+    $ord_params[] = $like;
+    $ord_params[] = $like;
+    $ord_types   .= 'ss';
+}
+
+$ord_where_sql = implode(' AND ', $ord_where);
+
+$ord_sql = "SELECT o.order_id, u.full_name, u.email, o.total_amount,
+                   o.status, o.payment_method, o.created_at
+            FROM orders o
+            JOIN users u ON u.user_id = o.user_id
+            WHERE {$ord_where_sql}
+            ORDER BY o.created_at DESC
+            LIMIT 200";
+
+$ord_stmt = $conn->prepare($ord_sql);
+if (!empty($ord_params)) {
+    $ord_stmt->bind_param($ord_types, ...$ord_params);
+}
+$ord_stmt->execute();
+$order_logs = $ord_stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+$ord_stmt->close();
+
+// Summary counts for the order cards
+$new_users_today = $conn->query("SELECT COUNT(*) FROM users  WHERE DATE(created_at) = CURDATE()")->fetch_row()[0] ?? 0;
 $orders_today    = $conn->query("SELECT COUNT(*) FROM orders WHERE DATE(created_at) = CURDATE()")->fetch_row()[0] ?? 0;
 $pending_orders  = $conn->query("SELECT COUNT(*) FROM orders WHERE status = 'pending'")->fetch_row()[0] ?? 0;
 
-// Status badge classes
-function status_class(string $s): string {
+/* ============================================================
+   DISPLAY HELPERS
+   ============================================================ */
+function event_badge_class(string $type): string
+{
+    return match($type) {
+        'login_success' => 'badge-success',
+        'login_failed'  => 'badge-danger',
+        'logout'        => 'badge-info',
+        'access_denied' => 'badge-warning',
+        default         => 'badge-secondary',
+    };
+}
+
+function event_icon(string $type): string
+{
+    return match($type) {
+        'login_success' => '✅',
+        'login_failed'  => '❌',
+        'logout'        => '🚪',
+        'access_denied' => '🚫',
+        default         => '📋',
+    };
+}
+
+function event_label(string $type): string
+{
+    return match($type) {
+        'login_success' => 'Login Success',
+        'login_failed'  => 'Login Failed',
+        'logout'        => 'Logout',
+        'access_denied' => 'Access Denied',
+        default         => ucwords(str_replace('_', ' ', $type)),
+    };
+}
+
+function order_status_class(string $s): string
+{
     return match($s) {
         'pending'          => 'badge-warning',
         'preparing'        => 'badge-info',
@@ -83,12 +200,11 @@ function status_class(string $s): string {
         default            => 'badge-secondary',
     };
 }
-function status_label(string $s): string {
+
+function order_status_label(string $s): string
+{
     return ucwords(str_replace('_', ' ', $s));
 }
-
-$role = $_SESSION['role'];
-$chef_name = htmlspecialchars($_SESSION['full_name'] ?? 'User', ENT_QUOTES, 'UTF-8');
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -96,101 +212,74 @@ $chef_name = htmlspecialchars($_SESSION['full_name'] ?? 'User', ENT_QUOTES, 'UTF
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>User Logs – Herald Canteen</title>
+    <script src="../assets/js/theme.js"></script>
     <link rel="stylesheet" href="../assets/css/style.css">
     <style>
-        body { background: #0f0f0f; color: #fff; font-family: 'Inter', sans-serif; }
-        .logs-shell { display: flex; min-height: 100vh; }
-
-        /* Sidebar */
-        .logs-sidebar {
-            width: 220px;
-            background: #111;
-            border-right: 1px solid rgba(255,255,255,0.07);
+        /* ── Tab buttons ─────────────────────────────────────── */
+        .tab-bar {
             display: flex;
-            flex-direction: column;
-            padding: 24px 0;
-            flex-shrink: 0;
-        }
-        .logs-sidebar .brand {
-            padding: 0 20px 24px;
-            border-bottom: 1px solid rgba(255,255,255,0.07);
-        }
-        .logs-sidebar .brand h2 { font-size: 18px; font-weight: 800; color: #fff; }
-        .logs-sidebar .brand span { color: #4db848; }
-        .logs-sidebar .brand small { display: block; font-size: 11px; color: rgba(255,255,255,0.3); text-transform: uppercase; letter-spacing: 1px; margin-top: 2px; }
-        .sidebar-nav { padding: 16px 0; flex: 1; }
-        .sidebar-nav a {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            padding: 11px 20px;
-            color: rgba(255,255,255,0.55);
-            text-decoration: none;
-            font-size: 14px;
-            font-weight: 500;
-            transition: all 0.15s;
-        }
-        .sidebar-nav a:hover, .sidebar-nav a.active {
-            background: rgba(77,184,72,0.1);
-            color: #4db848;
-            border-right: 3px solid #4db848;
-        }
-        .sidebar-nav a .nav-icon { font-size: 16px; }
-        .sidebar-logout {
-            padding: 16px 20px;
-            border-top: 1px solid rgba(255,255,255,0.07);
-        }
-        .sidebar-logout a {
-            display: flex;
-            align-items: center;
             gap: 8px;
-            color: rgba(255,100,100,0.7);
+            margin-bottom: 24px;
+        }
+        .tab-btn {
+            padding: 10px 24px;
+            border-radius: 999px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            border: 1px solid rgba(255,255,255,0.12);
+            background: rgba(255,255,255,0.05);
+            color: rgba(255,255,255,0.5);
             text-decoration: none;
-            font-size: 13px;
-            transition: color 0.15s;
+            transition: all 0.2s;
         }
-        .sidebar-logout a:hover { color: #e53935; }
-
-        /* Main */
-        .logs-main { flex: 1; padding: 32px; overflow-x: auto; }
-        .logs-topbar {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 28px;
-        }
-        .logs-topbar h1 { font-size: 24px; font-weight: 700; }
-        .logs-topbar .chef-tag {
-            font-size: 13px;
-            color: rgba(255,255,255,0.4);
+        .tab-btn.active,
+        .tab-btn:hover {
+            background: #1f6f43;
+            border-color: #1f6f43;
+            color: #fff;
         }
 
-        /* Summary cards */
+        /* ── Summary cards ───────────────────────────────────── */
         .summary-cards {
             display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 14px;
+            margin-bottom: 24px;
+        }
+        .summary-cards.three-col {
             grid-template-columns: repeat(3, 1fr);
-            gap: 16px;
-            margin-bottom: 28px;
         }
         .summary-card {
             background: #1a1a1a;
             border: 1px solid rgba(255,255,255,0.08);
-            border-radius: 16px;
-            padding: 20px 22px;
+            border-radius: 14px;
+            padding: 18px 20px;
         }
-        .summary-card .sc-label { font-size: 12px; color: rgba(255,255,255,0.4); text-transform: uppercase; letter-spacing: 0.8px; }
-        .summary-card .sc-value { font-size: 32px; font-weight: 800; margin-top: 6px; }
-        .summary-card.green .sc-value { color: #4db848; }
-        .summary-card.orange .sc-value { color: #ff9800; }
-        .summary-card.blue .sc-value { color: #42a5f5; }
+        .sc-label {
+            font-size: 11px;
+            color: rgba(255,255,255,0.4);
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+        }
+        .sc-value {
+            font-size: 30px;
+            font-weight: 800;
+            margin-top: 6px;
+        }
+        .sc-green  .sc-value { color: #4db848; }
+        .sc-red    .sc-value { color: #e53935; }
+        .sc-blue   .sc-value { color: #42a5f5; }
+        .sc-orange .sc-value { color: #ff9800; }
+        .sc-purple .sc-value { color: #ab47bc; }
 
-        /* Filter bar */
+        /* ── Filter bar ──────────────────────────────────────── */
         .filter-bar {
             display: flex;
             align-items: center;
-            gap: 12px;
+            gap: 10px;
             flex-wrap: wrap;
-            margin-bottom: 20px;
+            margin-bottom: 18px;
             background: #1a1a1a;
             border: 1px solid rgba(255,255,255,0.08);
             border-radius: 14px;
@@ -201,19 +290,22 @@ $chef_name = htmlspecialchars($_SESSION['full_name'] ?? 'User', ENT_QUOTES, 'UTF
             background: #111;
             border: 1px solid rgba(255,255,255,0.12);
             color: #fff;
-            padding: 9px 14px;
+            padding: 8px 14px;
             border-radius: 999px;
             font-size: 13px;
             outline: none;
         }
         .filter-bar input:focus,
         .filter-bar select:focus { border-color: #4db848; }
-        .filter-bar .filter-label { font-size: 12px; color: rgba(255,255,255,0.4); margin-right: 4px; }
+        .filter-label {
+            font-size: 12px;
+            color: rgba(255,255,255,0.4);
+        }
         .btn-filter {
             background: #1f6f43;
             color: #fff;
             border: none;
-            padding: 9px 20px;
+            padding: 8px 18px;
             border-radius: 999px;
             font-size: 13px;
             font-weight: 600;
@@ -225,7 +317,7 @@ $chef_name = htmlspecialchars($_SESSION['full_name'] ?? 'User', ENT_QUOTES, 'UTF
             background: transparent;
             color: rgba(255,255,255,0.4);
             border: 1px solid rgba(255,255,255,0.15);
-            padding: 9px 18px;
+            padding: 8px 16px;
             border-radius: 999px;
             font-size: 13px;
             cursor: pointer;
@@ -240,11 +332,11 @@ $chef_name = htmlspecialchars($_SESSION['full_name'] ?? 'User', ENT_QUOTES, 'UTF
         }
         .count-tag strong { color: #4db848; }
 
-        /* Table */
+        /* ── Table ───────────────────────────────────────────── */
         .logs-table-wrap {
             background: #1a1a1a;
             border: 1px solid rgba(255,255,255,0.08);
-            border-radius: 16px;
+            border-radius: 14px;
             overflow: hidden;
         }
         .logs-table {
@@ -257,34 +349,48 @@ $chef_name = htmlspecialchars($_SESSION['full_name'] ?? 'User', ENT_QUOTES, 'UTF
             font-size: 11px;
             text-transform: uppercase;
             letter-spacing: 0.8px;
-            padding: 14px 16px;
+            padding: 13px 16px;
             text-align: left;
             border-bottom: 1px solid rgba(255,255,255,0.07);
             font-weight: 600;
         }
         .logs-table td {
-            padding: 14px 16px;
+            padding: 13px 16px;
             border-bottom: 1px solid rgba(255,255,255,0.05);
             font-size: 13px;
             color: rgba(255,255,255,0.8);
             vertical-align: middle;
         }
         .logs-table tr:last-child td { border-bottom: none; }
-        .logs-table tr:hover td { background: rgba(77,184,72,0.04); }
-        .user-cell .uname { font-weight: 600; color: #fff; }
-        .user-cell .uemail { font-size: 11px; color: rgba(255,255,255,0.3); margin-top: 2px; }
-        .amt-cell { font-weight: 700; color: #4db848; }
-        .timestamp-cell { font-size: 12px; color: rgba(255,255,255,0.35); }
+        .logs-table tr:hover td { background: rgba(77,184,72,0.03); }
 
-        /* Badges */
-        .badge { display: inline-block; padding: 4px 12px; border-radius: 999px; font-size: 11px; font-weight: 700; text-transform: capitalize; }
-        .badge-warning  { background: rgba(255,152,0,0.15); color: #ff9800; }
-        .badge-info     { background: rgba(66,165,245,0.15); color: #42a5f5; }
-        .badge-success  { background: rgba(77,184,72,0.15); color: #4db848; }
-        .badge-primary  { background: rgba(103,58,183,0.15); color: #9c27b0; }
-        .badge-delivered{ background: rgba(38,166,154,0.15); color: #26a69a; }
-        .badge-danger   { background: rgba(229,57,53,0.15); color: #e53935; }
-        .badge-secondary{ background: rgba(255,255,255,0.07); color: rgba(255,255,255,0.5); }
+        .user-cell .uname  { font-weight: 600; color: #fff; }
+        .user-cell .uemail { font-size: 11px; color: rgba(255,255,255,0.3); margin-top: 2px; }
+        .anon-cell         { font-size: 12px; color: rgba(255,255,255,0.25); font-style: italic; }
+        .desc-cell         { font-size: 12px; color: rgba(255,255,255,0.45); max-width: 260px; word-break: break-word; }
+        .ip-cell           { font-size: 12px; color: rgba(255,255,255,0.3); font-family: monospace; }
+        .time-cell         { font-size: 12px; color: rgba(255,255,255,0.35); }
+        .amt-cell          { font-weight: 700; color: #4db848; }
+
+        /* ── Badges ──────────────────────────────────────────── */
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 4px 11px;
+            border-radius: 999px;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: capitalize;
+            white-space: nowrap;
+        }
+        .badge-success   { background: rgba(77,184,72,0.15);    color: #4db848; }
+        .badge-danger    { background: rgba(229,57,53,0.15);    color: #e53935; }
+        .badge-info      { background: rgba(66,165,245,0.15);   color: #42a5f5; }
+        .badge-warning   { background: rgba(255,152,0,0.15);    color: #ff9800; }
+        .badge-primary   { background: rgba(103,58,183,0.15);   color: #9c27b0; }
+        .badge-delivered { background: rgba(38,166,154,0.15);   color: #26a69a; }
+        .badge-secondary { background: rgba(255,255,255,0.07);  color: rgba(255,255,255,0.5); }
 
         .payment-pill {
             display: inline-block;
@@ -297,12 +403,17 @@ $chef_name = htmlspecialchars($_SESSION['full_name'] ?? 'User', ENT_QUOTES, 'UTF
             color: rgba(255,255,255,0.5);
         }
 
-        .no-data { text-align: center; padding: 48px; color: rgba(255,255,255,0.25); font-size: 15px; }
+        .no-data {
+            text-align: center;
+            padding: 48px;
+            color: rgba(255,255,255,0.25);
+            font-size: 15px;
+        }
         .export-btn {
             background: rgba(255,255,255,0.06);
             border: 1px solid rgba(255,255,255,0.12);
             color: rgba(255,255,255,0.6);
-            padding: 9px 18px;
+            padding: 8px 16px;
             border-radius: 999px;
             font-size: 13px;
             cursor: pointer;
@@ -310,118 +421,273 @@ $chef_name = htmlspecialchars($_SESSION['full_name'] ?? 'User', ENT_QUOTES, 'UTF
         }
         .export-btn:hover { background: rgba(255,255,255,0.1); color: #fff; }
 
-        @media (max-width: 900px) {
-            .summary-cards { grid-template-columns: 1fr 1fr; }
-            .logs-sidebar { display: none; }
+        @media (max-width: 1000px) {
+            .summary-cards,
+            .summary-cards.three-col { grid-template-columns: 1fr 1fr; }
+        }
+        @media (max-width: 640px) {
+            .summary-cards,
+            .summary-cards.three-col { grid-template-columns: 1fr; }
         }
     </style>
 </head>
-<body>
-<div class="logs-shell">
+<body class="<?= $current_role === 'chef' ? 'chef-page' : 'staff-page' ?>">
+<div class="layout">
 
-    <!-- Sidebar -->
-    <aside class="logs-sidebar">
-        <div class="brand">
-            <h2>Herald <span>Canteen</span></h2>
-            <small><?php echo strtoupper($role); ?> PORTAL</small>
+    <!-- ── Sidebar — matches chef-control.php / staff-control.php exactly ── -->
+    <div class="sidebar">
+        <div class="navbar-title">
+            Herald Canteen
+            <span><?= strtoupper($current_role) ?> PORTAL</span>
         </div>
-        <nav class="sidebar-nav">
-            <?php if ($role === 'chef'): ?>
-            <a href="chef-control.php"><span class="nav-icon">👨‍🍳</span> Chef Home</a>
+        <nav>
+            <?php if ($current_role === 'chef'): ?>
+                <a href="chef-control.php">👨‍🍳 Chef Home</a>
             <?php else: ?>
-            <a href="staff-control.php"><span class="nav-icon">🧾</span> Staff Home</a>
+                <a href="staff-control.php">🧾 Staff Home</a>
             <?php endif; ?>
-            <a href="user-logs.php" class="active"><span class="nav-icon">📋</span> Order Logs</a>
-        </nav>
-        <div class="sidebar-logout">
+            <a href="user-logs.php" class="active">📋 User Logs</a>
             <a href="logout.php">🚪 Logout</a>
-        </div>
-    </aside>
+        </nav>
+    </div>
 
-    <!-- Main -->
-    <main class="logs-main">
-        <div class="logs-topbar">
-            <div>
-                <h1>📋 Order Activity Logs</h1>
-                <div class="chef-tag">Welcome, <?php echo $chef_name; ?></div>
-            </div>
-            <button class="export-btn" onclick="window.print()">⬇ Export</button>
-        </div>
+    <!-- ── Main content ───────────────────────────────────────────────────── -->
+    <div class="main">
 
-        <!-- Summary cards -->
-        <div class="summary-cards">
-            <div class="summary-card green">
-                <div class="sc-label">New Users Today</div>
-                <div class="sc-value"><?php echo $new_users_today; ?></div>
+        <!-- Topbar -->
+        <div class="topbar">
+            <div class="topbar-welcome">
+                Welcome, <?= $viewer_name ?>
             </div>
-            <div class="summary-card orange">
-                <div class="sc-label">Orders Today</div>
-                <div class="sc-value"><?php echo $orders_today; ?></div>
-            </div>
-            <div class="summary-card blue">
-                <div class="sc-label">Pending Orders</div>
-                <div class="sc-value"><?php echo $pending_orders; ?></div>
+            <div style="display:flex;align-items:center;gap:12px;">
+                <label class="theme-toggle" title="Toggle light/dark mode">
+                    <input type="checkbox" class="theme-checkbox">
+                    <span class="theme-slider"></span>
+                </label>
+                <button class="export-btn" onclick="window.print()">⬇ Export</button>
             </div>
         </div>
 
-        <!-- Filters -->
-        <form method="GET" class="filter-bar">
-            <span class="filter-label">Status</span>
-            <select name="status" onchange="this.form.submit()">
-                <option value="">All</option>
-                <?php foreach (['pending','preparing','ready','out_for_delivery','delivered','cancelled'] as $s): ?>
-                <option value="<?php echo $s; ?>" <?php echo $status_filter === $s ? 'selected' : ''; ?>>
-                    <?php echo status_label($s); ?>
-                </option>
-                <?php endforeach; ?>
-            </select>
+        <div class="content">
 
-            <span class="filter-label">Date</span>
-            <input type="date" name="date" value="<?php echo htmlspecialchars($date_filter, ENT_QUOTES, 'UTF-8'); ?>" onchange="this.form.submit()">
+            <div class="section-title">
+                <h2>📋 User Logs</h2>
+                <p>Monitor login events, session activity, and order history across the system.</p>
+            </div>
 
-            <input type="text" name="search" placeholder="Search user…" value="<?php echo htmlspecialchars($search_filter, ENT_QUOTES, 'UTF-8'); ?>">
-            <button type="submit" class="btn-filter">Search</button>
+            <!-- Tab navigation -->
+            <div class="tab-bar">
+                <a href="user-logs.php?tab=events"
+                   class="tab-btn <?= $active_tab === 'events' ? 'active' : '' ?>">
+                    🔐 Login &amp; Session Events
+                </a>
+                <a href="user-logs.php?tab=orders"
+                   class="tab-btn <?= $active_tab === 'orders' ? 'active' : '' ?>">
+                    📦 Order Activity
+                </a>
+            </div>
 
-            <?php if ($status_filter || $date_filter || $search_filter): ?>
-            <a href="user-logs.php" class="btn-reset">Clear</a>
+            <?php if ($active_tab === 'events'): ?>
+            <!-- ══════════════════════════════════════════════════════
+                 TAB 1 — LOGIN & SESSION EVENTS
+                 ══════════════════════════════════════════════════ -->
+
+            <!-- Summary cards -->
+            <div class="summary-cards">
+                <div class="summary-card sc-green">
+                    <div class="sc-label">Logins Today</div>
+                    <div class="sc-value"><?= $logins_today ?></div>
+                </div>
+                <div class="summary-card sc-red">
+                    <div class="sc-label">Failed Attempts Today</div>
+                    <div class="sc-value"><?= $failures_today ?></div>
+                </div>
+                <div class="summary-card sc-blue">
+                    <div class="sc-label">Logouts Today</div>
+                    <div class="sc-value"><?= $logouts_today ?></div>
+                </div>
+                <div class="summary-card sc-orange">
+                    <div class="sc-label">Access Denied Today</div>
+                    <div class="sc-value"><?= $denied_today ?></div>
+                </div>
+            </div>
+
+            <!-- Filters -->
+            <form method="GET" class="filter-bar">
+                <input type="hidden" name="tab" value="events">
+
+                <span class="filter-label">Event</span>
+                <select name="event_type" onchange="this.form.submit()">
+                    <option value="">All Events</option>
+                    <?php foreach ($allowed_events as $et): ?>
+                    <option value="<?= $et ?>" <?= $ev_type === $et ? 'selected' : '' ?>>
+                        <?= event_label($et) ?>
+                    </option>
+                    <?php endforeach; ?>
+                </select>
+
+                <span class="filter-label">Date</span>
+                <input type="date" name="ev_date"
+                       value="<?= htmlspecialchars($ev_date, ENT_QUOTES, 'UTF-8') ?>"
+                       onchange="this.form.submit()">
+
+                <input type="text" name="ev_search"
+                       placeholder="Search name, email, description…"
+                       value="<?= htmlspecialchars($ev_search, ENT_QUOTES, 'UTF-8') ?>">
+                <button type="submit" class="btn-filter">Search</button>
+
+                <?php if ($ev_type || $ev_date || $ev_search): ?>
+                    <a href="user-logs.php?tab=events" class="btn-reset">Clear</a>
+                <?php endif; ?>
+
+                <span class="count-tag">
+                    Showing <strong><?= count($event_logs) ?></strong> records
+                </span>
+            </form>
+
+            <!-- Event log table -->
+            <div class="logs-table-wrap">
+                <table class="logs-table">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Event</th>
+                            <th>User</th>
+                            <th>IP Address</th>
+                            <th>Description</th>
+                            <th>Time</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    <?php if (count($event_logs) === 0): ?>
+                        <tr>
+                            <td colspan="6" class="no-data">No events found for your filters.</td>
+                        </tr>
+                    <?php else: foreach ($event_logs as $ev): ?>
+                        <tr>
+                            <td><?= (int)$ev['log_id'] ?></td>
+                            <td>
+                                <span class="badge <?= event_badge_class($ev['event_type']) ?>">
+                                    <?= event_icon($ev['event_type']) ?>
+                                    <?= event_label($ev['event_type']) ?>
+                                </span>
+                            </td>
+                            <td>
+                                <?php if ($ev['full_name']): ?>
+                                <div class="user-cell">
+                                    <div class="uname"><?= htmlspecialchars($ev['full_name'], ENT_QUOTES, 'UTF-8') ?></div>
+                                    <div class="uemail"><?= htmlspecialchars($ev['email'] ?? '', ENT_QUOTES, 'UTF-8') ?></div>
+                                </div>
+                                <?php else: ?>
+                                <span class="anon-cell">Unknown / Anonymous</span>
+                                <?php endif; ?>
+                            </td>
+                            <td class="ip-cell"><?= htmlspecialchars($ev['ip_address'], ENT_QUOTES, 'UTF-8') ?></td>
+                            <td class="desc-cell"><?= htmlspecialchars($ev['description'], ENT_QUOTES, 'UTF-8') ?></td>
+                            <td class="time-cell"><?= htmlspecialchars($ev['created_at'], ENT_QUOTES, 'UTF-8') ?></td>
+                        </tr>
+                    <?php endforeach; endif; ?>
+                    </tbody>
+                </table>
+            </div>
+
+            <?php else: ?>
+            <!-- ══════════════════════════════════════════════════════
+                 TAB 2 — ORDER ACTIVITY
+                 ══════════════════════════════════════════════════ -->
+
+            <!-- Summary cards -->
+            <div class="summary-cards three-col">
+                <div class="summary-card sc-green">
+                    <div class="sc-label">New Users Today</div>
+                    <div class="sc-value"><?= $new_users_today ?></div>
+                </div>
+                <div class="summary-card sc-orange">
+                    <div class="sc-label">Orders Today</div>
+                    <div class="sc-value"><?= $orders_today ?></div>
+                </div>
+                <div class="summary-card sc-blue">
+                    <div class="sc-label">Pending Orders</div>
+                    <div class="sc-value"><?= $pending_orders ?></div>
+                </div>
+            </div>
+
+            <!-- Filters -->
+            <form method="GET" class="filter-bar">
+                <input type="hidden" name="tab" value="orders">
+
+                <span class="filter-label">Status</span>
+                <select name="status" onchange="this.form.submit()">
+                    <option value="">All</option>
+                    <?php foreach ($allowed_statuses as $s): ?>
+                    <option value="<?= $s ?>" <?= $ord_status === $s ? 'selected' : '' ?>>
+                        <?= order_status_label($s) ?>
+                    </option>
+                    <?php endforeach; ?>
+                </select>
+
+                <span class="filter-label">Date</span>
+                <input type="date" name="date"
+                       value="<?= htmlspecialchars($ord_date, ENT_QUOTES, 'UTF-8') ?>"
+                       onchange="this.form.submit()">
+
+                <input type="text" name="search"
+                       placeholder="Search user…"
+                       value="<?= htmlspecialchars($ord_search, ENT_QUOTES, 'UTF-8') ?>">
+                <button type="submit" class="btn-filter">Search</button>
+
+                <?php if ($ord_status || $ord_date || $ord_search): ?>
+                    <a href="user-logs.php?tab=orders" class="btn-reset">Clear</a>
+                <?php endif; ?>
+
+                <span class="count-tag">
+                    Showing <strong><?= count($order_logs) ?></strong> records
+                </span>
+            </form>
+
+            <!-- Order activity table -->
+            <div class="logs-table-wrap">
+                <table class="logs-table">
+                    <thead>
+                        <tr>
+                            <th>Order #</th>
+                            <th>Customer</th>
+                            <th>Amount</th>
+                            <th>Payment</th>
+                            <th>Status</th>
+                            <th>Time</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    <?php if (count($order_logs) === 0): ?>
+                        <tr>
+                            <td colspan="6" class="no-data">No orders found for your filters.</td>
+                        </tr>
+                    <?php else: foreach ($order_logs as $log): ?>
+                        <tr>
+                            <td>#<?= (int)$log['order_id'] ?></td>
+                            <td class="user-cell">
+                                <div class="uname"><?= htmlspecialchars($log['full_name'], ENT_QUOTES, 'UTF-8') ?></div>
+                                <div class="uemail"><?= htmlspecialchars($log['email'], ENT_QUOTES, 'UTF-8') ?></div>
+                            </td>
+                            <td class="amt-cell">Rs <?= number_format((float)$log['total_amount'], 0) ?></td>
+                            <td><span class="payment-pill"><?= htmlspecialchars($log['payment_method'], ENT_QUOTES, 'UTF-8') ?></span></td>
+                            <td>
+                                <span class="badge <?= order_status_class($log['status']) ?>">
+                                    <?= order_status_label($log['status']) ?>
+                                </span>
+                            </td>
+                            <td class="time-cell"><?= htmlspecialchars($log['created_at'], ENT_QUOTES, 'UTF-8') ?></td>
+                        </tr>
+                    <?php endforeach; endif; ?>
+                    </tbody>
+                </table>
+            </div>
+
             <?php endif; ?>
 
-            <span class="count-tag">Showing <strong><?php echo $total_count; ?></strong> records</span>
-        </form>
-
-        <!-- Table -->
-        <div class="logs-table-wrap">
-            <table class="logs-table">
-                <thead>
-                    <tr>
-                        <th>Order #</th>
-                        <th>Customer</th>
-                        <th>Amount</th>
-                        <th>Payment</th>
-                        <th>Status</th>
-                        <th>Time</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php if (count($logs) === 0): ?>
-                    <tr><td colspan="6" class="no-data">No records found for your filters.</td></tr>
-                    <?php else: foreach ($logs as $log): ?>
-                    <tr>
-                        <td>#<?php echo $log['order_id']; ?></td>
-                        <td class="user-cell">
-                            <div class="uname"><?php echo htmlspecialchars($log['full_name'], ENT_QUOTES, 'UTF-8'); ?></div>
-                            <div class="uemail"><?php echo htmlspecialchars($log['email'], ENT_QUOTES, 'UTF-8'); ?></div>
-                        </td>
-                        <td class="amt-cell">Rs <?php echo number_format((float)$log['total_amount'], 0); ?></td>
-                        <td><span class="payment-pill"><?php echo htmlspecialchars($log['payment_method'], ENT_QUOTES, 'UTF-8'); ?></span></td>
-                        <td><span class="badge <?php echo status_class($log['status']); ?>"><?php echo status_label($log['status']); ?></span></td>
-                        <td class="timestamp-cell"><?php echo htmlspecialchars($log['created_at'], ENT_QUOTES, 'UTF-8'); ?></td>
-                    </tr>
-                    <?php endforeach; endif; ?>
-                </tbody>
-            </table>
-        </div>
-    </main>
-</div>
+        </div><!-- /.content -->
+    </div><!-- /.main -->
+</div><!-- /.layout -->
 </body>
 </html>
