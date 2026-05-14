@@ -1,16 +1,20 @@
 <?php
 require_once "../includes/auth.php";
-configure_secure_session();
-session_start();
+start_session();
 session_security_check();
 require_once "../config/db.php";
-require_once "../includes/auth.php";
 require_once "../includes/functions.php";
 
 require_role('staff');
 
 $field_errors = [];
-$message = '';
+
+// Pick up flash toast from POST-redirect-GET pattern
+$staff_toast = null;
+if (isset($_SESSION['_toast'])) {
+    $staff_toast = $_SESSION['_toast'];
+    unset($_SESSION['_toast']);
+}
 
 // Helper function for consistent sanitization
 function sanitize_output($data) {
@@ -21,6 +25,9 @@ function sanitize_output($data) {
    HANDLE DELIVERY STATUS UPDATE
 ---------------------------- */
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_delivery_status'])) {
+    $is_ajax_staff = !empty($_SERVER['HTTP_X_REQUESTED_WITH']) &&
+                     strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest';
+
     // Validate order_id with proper filtering
     $order_id_raw = $_POST['order_id'] ?? 0;
     $order_id = filter_var($order_id_raw, FILTER_VALIDATE_INT);
@@ -73,19 +80,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_delivery_statu
 
             if (!$allowed_transition) {
                 $field_errors['general'] = "Invalid delivery status transition for staff.";
+                if (!empty($is_ajax_staff)) { header('Content-Type: application/json'); echo json_encode(['ok' => false, 'error' => 'Invalid delivery status transition.']); exit; }
             } elseif ($new_status === 'delivered' && $payment_status !== 'successful') {
                 $field_errors['general'] = "Order cannot be marked as delivered until payment is successful.";
+                if (!empty($is_ajax_staff)) { header('Content-Type: application/json'); echo json_encode(['ok' => false, 'error' => 'Payment must be confirmed before marking delivered.']); exit; }
             } else {
                 $stmt = $conn->prepare("UPDATE orders SET status = ? WHERE order_id = ?");
                 $stmt->bind_param("si", $new_status, $order_id);
 
                 if ($stmt->execute()) {
-                    $message = "Delivery status updated successfully.";
+                    $stmt->close();
+                    if (!empty($is_ajax_staff)) {
+                        header('Content-Type: application/json');
+                        echo json_encode(['ok' => true, 'new_status' => $new_status, 'order_id' => $order_id]);
+                        exit;
+                    }
+                    $_SESSION['_toast'] = ['text' => 'Delivery status updated successfully.', 'type' => 'success'];
+                    session_write_close();
+                    header('Location: staff-control.php');
+                    exit;
                 } else {
                     $field_errors['general'] = "Failed to update delivery status.";
+                    $stmt->close();
+                    if (!empty($is_ajax_staff)) {
+                        header('Content-Type: application/json');
+                        echo json_encode(['ok' => false, 'error' => 'Failed to update delivery status.']);
+                        exit;
+                    }
                 }
-
-                $stmt->close();
             }
         } else {
             $field_errors['order_id'] = "Order not found.";
@@ -97,6 +119,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_delivery_statu
    HANDLE COD PAYMENT CONFIRMATION
 ---------------------------- */
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['confirm_cod_payment'])) {
+    $is_ajax_staff = !empty($_SERVER['HTTP_X_REQUESTED_WITH']) &&
+                     strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest';
+
     // Validate order_id with proper filtering
     $order_id_raw = $_POST['order_id'] ?? 0;
     $order_id = filter_var($order_id_raw, FILTER_VALIDATE_INT);
@@ -129,55 +154,66 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['confirm_cod_payment']
             $field_errors['order_id'] = "Order not found.";
         } elseif ($payment_row['payment_method'] !== 'cod') {
             $field_errors['general'] = "Manual payment confirmation is only allowed for COD orders.";
-        } elseif ($payment_row['status'] !== 'out_for_delivery') {
-            $field_errors['general'] = "COD payment can only be confirmed when the order is out for delivery.";
+        } elseif (!in_array($payment_row['status'], ['out_for_delivery', 'ready'], true)) {
+            $field_errors['general'] = "COD payment can only be confirmed when the order is Ready or Out for Delivery.";
         } elseif (!empty($payment_row['payment_id']) && $payment_row['payment_status'] === 'successful') {
             $field_errors['general'] = "COD payment is already confirmed.";
         } else {
-            if (empty($payment_row['payment_id'])) {
-                $payment_method = 'cod';
-                $payment_status = 'successful';
+            $conn->begin_transaction();
+            try {
                 $amount = (float)$payment_row['total_amount'];
-                
-                // Validate amount
-                if ($amount <= 0) {
-                    $field_errors['general'] = "Invalid order amount.";
+
+                if (empty($payment_row['payment_id'])) {
+                    // Insert payment row
+                    $stmt = $conn->prepare(
+                        "INSERT INTO payments (order_id, payment_method, payment_status, amount, paid_at)
+                         VALUES (?, 'cod', 'successful', ?, NOW())"
+                    );
+                    $stmt->bind_param("id", $order_id, $amount);
+                    $stmt->execute();
+                    $stmt->close();
                 } else {
-                    $stmt = $conn->prepare("
-                        INSERT INTO payments (order_id, payment_method, payment_status, amount, paid_at)
-                        VALUES (?, ?, ?, ?, NOW())
-                    ");
-                    $stmt->bind_param("issd", $order_id, $payment_method, $payment_status, $amount);
-
-                    if ($stmt->execute()) {
-                        $message = "COD payment recorded successfully.";
-                    } else {
-                        $field_errors['general'] = "Failed to record COD payment.";
-                    }
-
+                    // Update existing payment row
+                    $stmt = $conn->prepare(
+                        "UPDATE payments SET payment_status = 'successful', paid_at = NOW() WHERE order_id = ?"
+                    );
+                    $stmt->bind_param("i", $order_id);
+                    $stmt->execute();
                     $stmt->close();
                 }
-            } else {
-                $payment_status = 'successful';
 
-                $stmt = $conn->prepare("
-                    UPDATE payments
-                    SET payment_status = ?, paid_at = NOW()
-                    WHERE order_id = ?
-                ");
-                $stmt->bind_param("si", $payment_status, $order_id);
-
-                if ($stmt->execute()) {
-                    $message = "COD payment confirmed successfully.";
-                } else {
-                    $field_errors['general'] = "Failed to confirm COD payment.";
-                }
-
+                // Mark invoice as paid
+                $stmt = $conn->prepare(
+                    "UPDATE kot_invoices SET is_paid = 1, paid_at = NOW() WHERE order_id = ?"
+                );
+                $stmt->bind_param("i", $order_id);
+                $stmt->execute();
                 $stmt->close();
+
+                $conn->commit();
+                if (!empty($is_ajax_staff)) {
+                    header('Content-Type: application/json');
+                    echo json_encode(['ok' => true, 'order_id' => $order_id]);
+                    exit;
+                }
+                $_SESSION['_toast'] = ['text' => 'COD payment confirmed successfully. Invoice is now available to customer.', 'type' => 'success'];
+                session_write_close();
+                header('Location: staff-control.php');
+                exit;
+
+            } catch (Exception $e) {
+                $conn->rollback();
+                $field_errors['general'] = "Failed to confirm COD payment. Please try again.";
+                error_log("COD confirm failed: " . $e->getMessage());
+                if (!empty($is_ajax_staff)) {
+                    header('Content-Type: application/json');
+                    echo json_encode(['ok' => false, 'error' => 'Failed to confirm COD payment. Please try again.']);
+                    exit;
+                }
             }
-        }
-    }
-}
+        } // end else (valid payment row checks)
+    } // end if (empty($field_errors))
+} // end if POST confirm_cod_payment
 
 /* ---------------------------
    FETCH ORDER SUMMARY COUNTS
@@ -264,6 +300,7 @@ $orders_stmt->close();
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Staff Control Panel</title>
+    <script src="../assets/js/theme.js"></script>
     <link rel="stylesheet" href="../assets/css/style.css">
 
    
@@ -280,6 +317,7 @@ $orders_stmt->close();
         <nav>
             <a href="staff-control.php" class="active">🧾 Staff Home</a>
             <a href="#orders-section">📦 Delivery & Payments</a>
+            <a href="user-logs.php">📋 User Logs</a>
             <a href="logout.php">🚪 Logout</a>
         </nav>
     </div>
@@ -290,6 +328,11 @@ $orders_stmt->close();
             <div class="topbar-welcome">
                 Welcome, <?php echo sanitize_output($_SESSION['full_name']); ?>
             </div>
+            <!-- Theme Toggle -->
+            <label class="theme-toggle" title="Toggle light/dark mode">
+              <input type="checkbox" class="theme-checkbox">
+              <span class="theme-slider"></span>
+            </label>
         </div>
 
         <div class="content">
@@ -299,8 +342,8 @@ $orders_stmt->close();
                 <p>Manage delivery progress and payment completion.</p>
             </div>
 
-            <?php if ($message !== ''): ?>
-                <div class="alert-success">✓ <?php echo sanitize_output($message); ?></div>
+            <?php if ($staff_toast): ?>
+                <div class="alert-success">✓ <?php echo htmlspecialchars($staff_toast['text'], ENT_QUOTES, 'UTF-8'); ?></div>
             <?php endif; ?>
 
             <?php if (!empty($field_errors['general'])): ?>
@@ -373,26 +416,20 @@ $orders_stmt->close();
                                     </td>
                                     <td><?php echo sanitize_output($order['created_at']); ?></td>
                                     <td>
-                                        <div class="action-stack">
+                                        <div class="action-stack" id="action-<?php echo (int)$order['order_id']; ?>">
 
                                             <?php if ($order['status'] === 'ready'): ?>
-                                                <form method="POST">
-                                                    <input type="hidden" name="order_id" value="<?php echo sanitize_output($order['order_id']); ?>">
-                                                    <input type="hidden" name="new_status" value="out_for_delivery">
-                                                    <button type="submit" name="update_delivery_status" class="staff-btn">
-                                                        Mark On Delivery
-                                                    </button>
-                                                </form>
+                                                <button type="button" class="staff-btn"
+                                                    onclick="staffAction('delivery', <?php echo (int)$order['order_id']; ?>, 'out_for_delivery', this)">
+                                                    Mark On Delivery
+                                                </button>
 
                                             <?php elseif ($order['status'] === 'out_for_delivery'): ?>
                                                 <?php if ($order['payment_status'] === 'successful'): ?>
-                                                    <form method="POST">
-                                                        <input type="hidden" name="order_id" value="<?php echo sanitize_output($order['order_id']); ?>">
-                                                        <input type="hidden" name="new_status" value="delivered">
-                                                        <button type="submit" name="update_delivery_status" class="staff-btn">
-                                                            Mark Delivered
-                                                        </button>
-                                                    </form>
+                                                    <button type="button" class="staff-btn"
+                                                        onclick="staffAction('delivery', <?php echo (int)$order['order_id']; ?>, 'delivered', this)">
+                                                        Mark Delivered
+                                                    </button>
                                                 <?php else: ?>
                                                     <button type="button" class="staff-btn" disabled>
                                                         Mark Delivered
@@ -406,12 +443,10 @@ $orders_stmt->close();
 
                                             <?php if ($order['payment_method'] === 'cod'): ?>
                                                 <?php if ($order['status'] === 'out_for_delivery' && in_array($order['payment_status'], ['pending', 'missing'], true)): ?>
-                                                    <form method="POST">
-                                                        <input type="hidden" name="order_id" value="<?php echo sanitize_output($order['order_id']); ?>">
-                                                        <button type="submit" name="confirm_cod_payment" class="staff-btn">
-                                                            Confirm COD Payment
-                                                        </button>
-                                                    </form>
+                                                    <button type="button" class="staff-btn"
+                                                        onclick="staffAction('cod', <?php echo (int)$order['order_id']; ?>, null, this)">
+                                                        Confirm COD Payment
+                                                    </button>
                                                 <?php elseif ($order['payment_status'] === 'successful'): ?>
                                                     <span class="muted-text">COD payment confirmed</span>
                                                 <?php else: ?>
@@ -446,6 +481,154 @@ $orders_stmt->close();
         </div>
     </div>
 </div>
+
+<!-- Staff Toast -->
+<div class="toast" id="staffToast" style="min-width:280px;display:none;">
+    <div class="toast-icon">
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none" id="staffToastIcon">
+            <circle cx="9" cy="9" r="9" fill="#4db848"/>
+            <path d="M5 9.5L7.5 12L13 6.5" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+    </div>
+    <div class="toast-body">
+        <span class="toast-title" id="staffToastTitle"></span>
+        <span class="toast-sub" id="staffToastSub"></span>
+    </div>
+    <button class="toast-close" onclick="this.closest('.toast').classList.add('toast-hide')">&#x2715;</button>
+</div>
+
+<script>
+function showStaffToast(text, type) {
+    var toast = document.getElementById('staffToast');
+    var title = document.getElementById('staffToastTitle');
+    var sub   = document.getElementById('staffToastSub');
+    if (!toast) return;
+    title.textContent = text;
+    sub.textContent   = type === 'success' ? 'Updated successfully \u2713' : 'Action completed.';
+    toast.classList.remove('toast-hide', 'toast-danger');
+    if (type === 'danger') toast.classList.add('toast-danger');
+    toast.style.display = '';
+    clearTimeout(toast._t);
+    toast._t = setTimeout(function() { toast.classList.add('toast-hide'); }, 3500);
+}
+
+function updateSummaryCount(status, delta) {
+    var map = {
+        'out_for_delivery': 1,   // "On Delivery" card index
+        'delivered': 2,           // "Delivered" card index
+        'ready': 0                // "Ready Orders" card index
+    };
+    var cards = document.querySelectorAll('.summary-card .count');
+    if (cards[map[status]] !== undefined) {
+        var cur = parseInt(cards[map[status]].textContent) || 0;
+        cards[map[status]].textContent = Math.max(0, cur + delta);
+    }
+}
+
+function staffAction(type, orderId, newStatus, btn) {
+    btn.disabled = true;
+    var origText = btn.textContent;
+    btn.textContent = '...';
+
+    var body = type === 'delivery'
+        ? 'update_delivery_status=1&order_id=' + orderId + '&new_status=' + encodeURIComponent(newStatus)
+        : 'confirm_cod_payment=1&order_id=' + orderId;
+
+    fetch('staff-control.php', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'X-Requested-With': 'XMLHttpRequest'
+        },
+        body: body
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (!data.ok) {
+            btn.disabled = false;
+            btn.textContent = origText;
+            alert(data.error || 'Action failed. Please try again.');
+            return;
+        }
+
+        var row = btn.closest('tr');
+        var actionDiv = document.getElementById('action-' + orderId);
+
+        if (type === 'delivery') {
+            // Update status badge in the row
+            var badge = row ? row.querySelector('.status-badge') : null;
+            if (badge) {
+                badge.className = 'status-badge status-' + data.new_status;
+                badge.textContent = data.new_status.replace(/_/g, ' ');
+            }
+            // Update summary counts
+            if (data.new_status === 'out_for_delivery') {
+                updateSummaryCount('ready', -1);
+                updateSummaryCount('out_for_delivery', 1);
+                // Update action buttons
+                if (actionDiv) {
+                    // Check payment status badge in row
+                    var payBadge = row ? row.querySelector('.payment-badge') : null;
+                    var payStatus = payBadge ? payBadge.textContent.trim() : '';
+                    var isPaid = payStatus === 'successful';
+                    actionDiv.innerHTML = isPaid
+                        ? '<button type="button" class="staff-btn" onclick="staffAction(\'delivery\',' + orderId + ',\'delivered\',this)">Mark Delivered</button>'
+                        : '<button type="button" class="staff-btn" disabled>Mark Delivered</button><span class="muted-text">Confirm payment first</span>';
+                    // Keep COD button if applicable - just rebuild the existing non-delivery part
+                    // (COD confirm button stays until payment confirmed; it was already there)
+                }
+            } else if (data.new_status === 'delivered') {
+                updateSummaryCount('out_for_delivery', -1);
+                updateSummaryCount('delivered', 1);
+                if (actionDiv) {
+                    // Clear all buttons, show complete text
+                    var codPart = actionDiv.innerHTML.includes('Confirm COD')
+                        ? '<span class="muted-text">COD payment pending</span>' : '';
+                    actionDiv.innerHTML = '<span class="muted-text">Delivery complete</span>' + codPart;
+                }
+            }
+            showStaffToast('Delivery status updated successfully.', 'success');
+
+        } else if (type === 'cod') {
+            // Payment confirmed — update payment badge and unlock "Mark Delivered"
+            var payBadge = row ? row.querySelector('.payment-badge') : null;
+            if (payBadge) {
+                payBadge.className = 'payment-badge payment-successful';
+                payBadge.textContent = 'successful';
+            }
+            // Update pending payments count
+            var cards = document.querySelectorAll('.summary-card .count');
+            if (cards[3]) {
+                var cur = parseInt(cards[3].textContent) || 0;
+                cards[3].textContent = Math.max(0, cur - 1);
+            }
+            // Replace COD button and unlock Mark Delivered
+            if (actionDiv) {
+                // Replace COD button with confirmed text
+                var codBtn = actionDiv.querySelector('button[onclick*="staffAction(\'cod\'"]');
+                if (codBtn) {
+                    codBtn.replaceWith(Object.assign(document.createElement('span'), { className: 'muted-text', textContent: 'COD payment confirmed' }));
+                }
+                // Unlock the Mark Delivered button if it exists and is disabled
+                var deliverBtn = actionDiv.querySelector('button.staff-btn[disabled]');
+                if (deliverBtn && deliverBtn.textContent.trim() === 'Mark Delivered') {
+                    deliverBtn.disabled = false;
+                    deliverBtn.setAttribute('onclick', "staffAction('delivery'," + orderId + ",'delivered',this)");
+                    // Remove the "Confirm payment first" hint
+                    var hint = actionDiv.querySelector('.muted-text');
+                    if (hint && hint.textContent.trim() === 'Confirm payment first') hint.remove();
+                }
+            }
+            showStaffToast('COD payment confirmed successfully.', 'success');
+        }
+    })
+    .catch(function() {
+        btn.disabled = false;
+        btn.textContent = origText;
+        alert('Network error. Please try again.');
+    });
+}
+</script>
 
 </body>
 </html>
