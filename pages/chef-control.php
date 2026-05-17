@@ -1302,7 +1302,7 @@ function showChefToast(text, type) {
     setTimeout(function() { toast.classList.add('toast-hide'); }, 3500);
 }
 
-// KOT printing is now handled server-side via chef_kot_print.php
+
 // The "Print / Download KOT" link opens chef_kot_print.php?kot_id=N in a new tab.
 </script>
 
