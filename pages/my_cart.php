@@ -1,8 +1,7 @@
 <?php
-// my_cart.php — Herald Canteen
+// my_cart.php — Herald Canteen (AJAX cart update — no page reload on qty/remove)
 require_once "../includes/auth.php";
-configure_secure_session();
-session_start();
+start_session();
 session_security_check();
 
 if (file_exists(__DIR__ . '/../config/db.php')) {
@@ -12,7 +11,16 @@ if (file_exists(__DIR__ . '/../config/db.php')) {
 }
 
 if (empty($_SESSION['user_id'])) {
-    header('Location: login.php');
+    header('Location: portal-login.php');
+    exit;
+}
+// RBAC: Block chef and staff from the customer cart
+if (isset($_SESSION['role']) && $_SESSION['role'] !== 'customer') {
+    if ($_SESSION['role'] === 'chef') {
+        header('Location: chef-control.php');
+        exit;
+    }
+    header('Location: staff-control.php');
     exit;
 }
 
@@ -25,10 +33,83 @@ if (empty($_SESSION['csrf_token'])) {
 define('FREE_DELIVERY_THRESHOLD', 500);
 define('DELIVERY_FEE', 30);
 
+// ── Detect AJAX (XMLHttpRequest header sent by our JS fetch calls) ────────────
+$is_ajax = !empty($_SERVER['HTTP_X_REQUESTED_WITH']) &&
+           strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest';
+
+// ── GET: Reorder handler ──────────────────────────────────────────────────────
+// Triggered by ?reorder=ORDER_ID from the My Orders page.
+// Fetches items from the specified past order (must belong to this user),
+// merges them into the current cart, then redirects to my_cart.php.
+if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['reorder'])) {
+    $reorder_id = filter_var($_GET['reorder'], FILTER_VALIDATE_INT);
+
+    if ($reorder_id && $reorder_id > 0) {
+        // Verify order belongs to this user and fetch its items
+        $stmt = $conn->prepare("
+            SELECT oi.item_id, oi.quantity
+            FROM order_items oi
+            INNER JOIN orders o ON oi.order_id = o.order_id
+            WHERE oi.order_id = ? AND o.user_id = ?
+        ");
+        $stmt->bind_param("ii", $reorder_id, $user_id);
+        $stmt->execute();
+        $reorder_items = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+        $stmt->close();
+
+        if (!empty($reorder_items)) {
+            // Check which items still exist and are available
+            $placeholders = implode(',', array_fill(0, count($reorder_items), '?'));
+            $item_ids = array_column($reorder_items, 'item_id');
+            $avail_stmt = $conn->prepare(
+                "SELECT item_id FROM menu_items WHERE item_id IN ($placeholders) AND is_available = 1"
+            );
+            $avail_stmt->bind_param(str_repeat('i', count($item_ids)), ...$item_ids);
+            $avail_stmt->execute();
+            $available_ids = array_column(
+                $avail_stmt->get_result()->fetch_all(MYSQLI_ASSOC),
+                'item_id'
+            );
+            $avail_stmt->close();
+
+            // Upsert each available item into cart
+            $upsert = $conn->prepare("
+                INSERT INTO cart (user_id, item_id, quantity)
+                VALUES (?, ?, ?)
+                ON DUPLICATE KEY UPDATE quantity = quantity + VALUES(quantity)
+            ");
+            foreach ($reorder_items as $ri) {
+                if (in_array((int)$ri['item_id'], array_map('intval', $available_ids), true)) {
+                    $iid = (int)$ri['item_id'];
+                    $qty = max(1, (int)$ri['quantity']);
+                    $upsert->bind_param("iii", $user_id, $iid, $qty);
+                    $upsert->execute();
+                }
+            }
+            $upsert->close();
+            $_SESSION['flash_success'] = 'Items from your previous order have been added to your cart.';
+        } else {
+            $_SESSION['flash_error'] = 'That order could not be found or does not belong to your account.';
+        }
+    }
+
+    session_write_close();
+    header('Location: my_cart.php');
+    exit;
+}
+
+// ── POST handler (AJAX + normal form fallback) ────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
+    // CSRF check
     if (empty($_POST['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'])) {
+        if ($is_ajax) {
+            header('Content-Type: application/json');
+            echo json_encode(['ok' => false, 'error' => 'Invalid CSRF token.']);
+            exit;
+        }
         $_SESSION['flash_error'] = 'Invalid request. Please try again.';
+        session_write_close();
         header('Location: my_cart.php');
         exit;
     }
@@ -37,19 +118,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $cart_id = (int) ($_POST['cart_id'] ?? 0);
 
     if ($action === 'increase' && $cart_id) {
-        // Get current quantity and price
         $stmt = $conn->prepare("SELECT c.quantity, m.price FROM cart c JOIN menu_items m ON c.item_id = m.item_id WHERE c.cart_id = ? AND c.user_id = ?");
         $stmt->bind_param("ii", $cart_id, $user_id);
         $stmt->execute();
-        $result = $stmt->get_result();
-        $row = $result->fetch_assoc();
-        
+        $row = $stmt->get_result()->fetch_assoc();
         if ($row && $row['quantity'] < 20) {
-            $new_qty = $row['quantity'] + 1;
-            $new_total = $new_qty * $row['price'];
-            $stmt = $conn->prepare("UPDATE cart SET quantity = ?, total_price = ? WHERE cart_id = ? AND user_id = ?");
-            $stmt->bind_param("idii", $new_qty, $new_total, $cart_id, $user_id);
-            $stmt->execute();
+            $nq = $row['quantity'] + 1;
+            $nt = $nq * $row['price'];
+            $u  = $conn->prepare("UPDATE cart SET quantity = ?, total_price = ? WHERE cart_id = ? AND user_id = ?");
+            $u->bind_param("idii", $nq, $nt, $cart_id, $user_id);
+            $u->execute();
         }
 
     } elseif ($action === 'decrease' && $cart_id) {
@@ -57,40 +135,72 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt->bind_param("ii", $cart_id, $user_id);
         $stmt->execute();
         $row = $stmt->get_result()->fetch_assoc();
-
         if ($row) {
             if ((int)$row['quantity'] <= 1) {
-                $stmt = $conn->prepare("DELETE FROM cart WHERE cart_id = ? AND user_id = ?");
-                $stmt->bind_param("ii", $cart_id, $user_id);
-                $stmt->execute();
+                $d = $conn->prepare("DELETE FROM cart WHERE cart_id = ? AND user_id = ?");
+                $d->bind_param("ii", $cart_id, $user_id);
+                $d->execute();
             } else {
-                $new_qty = (int)$row['quantity'] - 1;
-                $new_total = $new_qty * $row['price'];
-                $stmt = $conn->prepare("UPDATE cart SET quantity = ?, total_price = ? WHERE cart_id = ? AND user_id = ?");
-                $stmt->bind_param("idii", $new_qty, $new_total, $cart_id, $user_id);
-                $stmt->execute();
+                $nq = (int)$row['quantity'] - 1;
+                $nt = $nq * $row['price'];
+                $u  = $conn->prepare("UPDATE cart SET quantity = ?, total_price = ? WHERE cart_id = ? AND user_id = ?");
+                $u->bind_param("idii", $nq, $nt, $cart_id, $user_id);
+                $u->execute();
             }
         }
 
     } elseif ($action === 'remove' && $cart_id) {
-        $stmt = $conn->prepare("DELETE FROM cart WHERE cart_id = ? AND user_id = ?");
-        $stmt->bind_param("ii", $cart_id, $user_id);
-        $stmt->execute();
+        $d = $conn->prepare("DELETE FROM cart WHERE cart_id = ? AND user_id = ?");
+        $d->bind_param("ii", $cart_id, $user_id);
+        $d->execute();
 
     } elseif ($action === 'clear_all') {
-        $stmt = $conn->prepare("DELETE FROM cart WHERE user_id = ?");
-        $stmt->bind_param("i", $user_id);
-        $stmt->execute();
+        $d = $conn->prepare("DELETE FROM cart WHERE user_id = ?");
+        $d->bind_param("i", $user_id);
+        $d->execute();
 
     } elseif ($action === 'checkout') {
         header('Location: payment.php');
         exit;
     }
 
+    // ── AJAX: return updated cart state as JSON ───────────────────────────────
+    if ($is_ajax) {
+        $stmt = $conn->prepare("SELECT c.cart_id, c.quantity, m.price FROM cart c JOIN menu_items m ON c.item_id = m.item_id WHERE c.user_id = ?");
+        $stmt->bind_param("i", $user_id);
+        $stmt->execute();
+        $rows = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+
+        $items_data = [];
+        $subtotal   = 0;
+        foreach ($rows as $r) {
+            $line = $r['quantity'] * $r['price'];
+            $subtotal += $line;
+            $items_data[$r['cart_id']] = ['quantity' => $r['quantity'], 'line_total' => $line];
+        }
+        $delivery    = ($subtotal > 0 && $subtotal < FREE_DELIVERY_THRESHOLD) ? DELIVERY_FEE : 0;
+        $grand_total = $subtotal + $delivery;
+
+        header('Content-Type: application/json');
+        echo json_encode([
+            'ok'          => true,
+            'clear_all'   => ($action === 'clear_all'),
+            'removed_id'  => ($action === 'remove') ? $cart_id : null,
+            'items'       => $items_data,
+            'subtotal'    => $subtotal,
+            'delivery'    => $delivery,
+            'grand_total' => $grand_total,
+            'cart_count'  => count($rows),
+        ]);
+        exit;
+    }
+
+    // Normal form POST fallback (clear_all or non-JS)
     header('Location: my_cart.php');
     exit;
 }
 
+// ── Render page ───────────────────────────────────────────────────────────────
 $stmt = $conn->prepare("
     SELECT c.cart_id, c.quantity, c.total_price as cart_total_price,
            m.item_id, m.name AS item_name, m.description, m.price, m.is_available
@@ -99,7 +209,6 @@ $stmt = $conn->prepare("
     WHERE c.user_id = ?
     ORDER BY c.added_at DESC
 ");
-
 $stmt->bind_param("i", $user_id);
 $stmt->execute();
 $result = $stmt->get_result();
@@ -110,44 +219,40 @@ while ($row = $result->fetch_assoc()) {
     $cart_items[] = $row;
 }
 
-$subtotal = 0;
-foreach ($cart_items as $item) {
-    $subtotal += $item['total_price'];
-}
-
-$delivery = ($subtotal > 0 && $subtotal < FREE_DELIVERY_THRESHOLD) ? DELIVERY_FEE : 0;
+$subtotal    = array_sum(array_column($cart_items, 'total_price'));
+$delivery    = ($subtotal > 0 && $subtotal < FREE_DELIVERY_THRESHOLD) ? DELIVERY_FEE : 0;
 $grand_total = $subtotal + $delivery;
 
-$flash_error = $_SESSION['flash_error'] ?? '';
-unset($_SESSION['flash_error']);
+$flash_error   = $_SESSION['flash_error']   ?? '';
+$flash_success = $_SESSION['flash_success'] ?? '';
+unset($_SESSION['flash_error'], $_SESSION['flash_success']);
 
 function get_food_emoji(string $name): string {
-    $map = [
-        'momo'=>'🥟','burger'=>'🍔','pizza'=>'🍕','rice'=>'🍚',
-        'noodle'=>'🍜','chicken'=>'🍗','tea'=>'☕','coffee'=>'☕',
-        'cake'=>'🎂','soup'=>'🍲','pasta'=>'🍝','sandwich'=>'🥪',
-        'roll'=>'🌯','drink'=>'🥤','coffee'=>'☕','dessert'=>'🍰'
-    ];
+    $map = ['momo'=>'🥟','burger'=>'🍔','pizza'=>'🍕','rice'=>'🍚',
+            'noodle'=>'🍜','chicken'=>'🍗','tea'=>'☕','coffee'=>'☕',
+            'cake'=>'🎂','soup'=>'🍲','pasta'=>'🍝','sandwich'=>'🥪',
+            'roll'=>'🌯','drink'=>'🥤','dessert'=>'🍰'];
     $lower = strtolower($name);
-    foreach ($map as $k => $e) {
-        if (str_contains($lower, $k)) return $e;
-    }
+    foreach ($map as $k => $e) { if (str_contains($lower, $k)) return $e; }
     return '🍱';
 }
 
-$full_name = $_SESSION['full_name'] ?? 'User';
+$full_name  = $_SESSION['full_name'] ?? 'User';
 $name_parts = explode(' ', $full_name);
-$initials = strtoupper($name_parts[0][0] . ($name_parts[1][0] ?? ''));
+$initials   = strtoupper($name_parts[0][0] . ($name_parts[1][0] ?? ''));
 ?>
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>My Cart — Herald Canteen</title>
+<script src="../assets/js/theme.js"></script>
 <link rel="stylesheet" href="../assets/css/style.css">
-
+<style>
+.cart-row-removing { opacity: 0; transition: opacity .25s ease; }
+.qty-btn-loading   { opacity: .45; pointer-events: none; }
+</style>
 </head>
 <body>
 
@@ -172,6 +277,12 @@ $initials = strtoupper($name_parts[0][0] . ($name_parts[1][0] ?? ''));
             <button class="btn-logout">Logout</button>
         </form>
     </div>
+
+    <!-- Theme Toggle -->
+    <label class="theme-toggle" title="Toggle light/dark mode">
+      <input type="checkbox" class="theme-checkbox">
+      <span class="theme-slider"></span>
+    </label>
 </nav>
 
 <div class="page-wrapper">
@@ -183,6 +294,9 @@ $initials = strtoupper($name_parts[0][0] . ($name_parts[1][0] ?? ''));
 
     <?php if ($flash_error): ?>
         <div class="alert alert-error"><?= htmlspecialchars($flash_error) ?></div>
+    <?php endif; ?>
+    <?php if ($flash_success): ?>
+        <div class="alert alert-success"><?= htmlspecialchars($flash_success) ?></div>
     <?php endif; ?>
 
     <?php if (empty($cart_items)): ?>
@@ -199,7 +313,7 @@ $initials = strtoupper($name_parts[0][0] . ($name_parts[1][0] ?? ''));
     <?php else: ?>
 
         <div class="card">
-            <table class="cart-table">
+            <table class="cart-table" id="cart-table">
                 <thead>
                     <tr>
                         <th>Item</th>
@@ -209,10 +323,11 @@ $initials = strtoupper($name_parts[0][0] . ($name_parts[1][0] ?? ''));
                         <th></th>
                     </tr>
                 </thead>
-
-                <tbody>
+                <tbody id="cart-body">
                 <?php foreach ($cart_items as $item): ?>
-                    <tr>
+                    <tr id="cart-row-<?= $item['cart_id'] ?>"
+                        data-cart-id="<?= $item['cart_id'] ?>"
+                        data-price="<?= (float)$item['price'] ?>">
                         <td>
                             <div class="item-cell">
                                 <span class="item-emoji"><?= get_food_emoji($item['item_name']) ?></span>
@@ -227,35 +342,23 @@ $initials = strtoupper($name_parts[0][0] . ($name_parts[1][0] ?? ''));
 
                         <td>
                             <div class="qty-stepper">
-                                <form method="POST">
-                                    <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
-                                    <input type="hidden" name="action" value="decrease">
-                                    <input type="hidden" name="cart_id" value="<?= $item['cart_id'] ?>">
-                                    <button type="submit">−</button>
-                                </form>
-
-                                <span><?= $item['quantity'] ?></span>
-
-                                <form method="POST">
-                                    <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
-                                    <input type="hidden" name="action" value="increase">
-                                    <input type="hidden" name="cart_id" value="<?= $item['cart_id'] ?>">
-                                    <button type="submit">+</button>
-                                </form>
+                                <button type="button" class="qty-btn"
+                                    onclick="cartAction('decrease', <?= $item['cart_id'] ?>, this)">−</button>
+                                <span id="qty-<?= $item['cart_id'] ?>"><?= $item['quantity'] ?></span>
+                                <button type="button" class="qty-btn"
+                                    onclick="cartAction('increase', <?= $item['cart_id'] ?>, this)">+</button>
                             </div>
                         </td>
 
-                        <td class="item-price-strong">
+                        <td class="item-price-strong" id="line-<?= $item['cart_id'] ?>">
                             Rs <?= number_format($item['total_price']) ?>
                         </td>
 
                         <td>
-                            <form method="POST">
-                                <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
-                                <input type="hidden" name="action" value="remove">
-                                <input type="hidden" name="cart_id" value="<?= $item['cart_id'] ?>">
-                                <button type="submit" class="btn-danger">🗑 Remove</button>
-                            </form>
+                            <button type="button" class="btn-danger"
+                                onclick="cartAction('remove', <?= $item['cart_id'] ?>, this)">
+                                🗑 Remove
+                            </button>
                         </td>
                     </tr>
                 <?php endforeach; ?>
@@ -263,42 +366,111 @@ $initials = strtoupper($name_parts[0][0] . ($name_parts[1][0] ?? ''));
             </table>
         </div>
 
-        <div class="summary-strip">
+        <div class="summary-strip" id="summary-strip">
             <div class="summary-left">
                 <div class="summary-line">
                     <span>Subtotal</span>
-                    <span>Rs <?= number_format($subtotal) ?></span>
+                    <span id="summary-subtotal">Rs <?= number_format($subtotal) ?></span>
                 </div>
-
                 <div class="summary-line">
                     <span>Delivery</span>
-                    <span><?= $delivery ? "Rs $delivery" : "FREE" ?></span>
+                    <span id="summary-delivery"><?= $delivery ? "Rs $delivery" : "FREE" ?></span>
                 </div>
             </div>
 
             <div class="summary-right">
                 <div class="total-label">Total</div>
-                <div class="total-amount">Rs <?= number_format($grand_total) ?></div>
-
-                <form method="POST">
-                    <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
-                    <input type="hidden" name="action" value="checkout">
-                    <button type="submit" class="btn btn-primary">Proceed to Checkout</button>
-                </form>
+                <div class="total-amount" id="summary-grand">Rs <?= number_format($grand_total) ?></div>
+                <a href="payment.php" class="btn btn-primary"
+                   style="display:block;text-align:center;margin-top:14px;">
+                    Proceed to Checkout
+                </a>
             </div>
         </div>
 
         <div class="clear-cart-wrap">
-            <form method="POST">
+            <form method="POST" id="clear-form">
                 <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
                 <input type="hidden" name="action" value="clear_all">
-                <button type="submit" class="btn-danger btn-clear-cart" onclick="return confirm('Clear entire cart?')">Clear Cart</button>
+                <button type="button" class="btn-danger btn-clear-cart"
+                    onclick="clearAll()">Clear Cart</button>
             </form>
         </div>
 
     <?php endif; ?>
 
-</div>
+</div><!-- /.page-wrapper -->
 
+<script>
+const CSRF_TOKEN          = <?= json_encode($_SESSION['csrf_token']) ?>;
+const FREE_THRESHOLD      = <?= FREE_DELIVERY_THRESHOLD ?>;
+const DELIVERY_FEE_AMOUNT = <?= DELIVERY_FEE ?>;
+
+function cartAction(action, cartId, triggerEl) {
+    if (triggerEl) triggerEl.classList.add('qty-btn-loading');
+
+    fetch('my_cart.php', {
+        method:  'POST',
+        headers: {
+            'Content-Type':     'application/x-www-form-urlencoded',
+            'X-Requested-With': 'XMLHttpRequest',
+        },
+        body: new URLSearchParams({
+            csrf_token: CSRF_TOKEN,
+            action:     action,
+            cart_id:    cartId,
+        }).toString(),
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (!data.ok) { location.reload(); return; }
+
+        if (data.clear_all) { location.reload(); return; }
+
+        // If this row was removed (remove action, or decrease-to-zero)
+        const stillExists = data.items && data.items[cartId];
+        if (!stillExists) {
+            const row = document.getElementById('cart-row-' + cartId);
+            if (row) {
+                row.classList.add('cart-row-removing');
+                setTimeout(() => { row.remove(); updateSummary(data); }, 260);
+            }
+        } else {
+            // Update qty and line total
+            const qtyEl  = document.getElementById('qty-'  + cartId);
+            const lineEl = document.getElementById('line-' + cartId);
+            const item   = data.items[cartId];
+            if (qtyEl)  qtyEl.textContent  = item.quantity;
+            if (lineEl) lineEl.textContent = 'Rs\u00a0' + fmt(item.line_total);
+            updateSummary(data);
+        }
+
+        // Empty cart → reload to show empty state
+        if (data.cart_count === 0) setTimeout(() => location.reload(), 300);
+    })
+    .catch(() => location.reload())
+    .finally(() => {
+        if (triggerEl) triggerEl.classList.remove('qty-btn-loading');
+    });
+}
+
+function updateSummary(data) {
+    const subEl   = document.getElementById('summary-subtotal');
+    const delEl   = document.getElementById('summary-delivery');
+    const grandEl = document.getElementById('summary-grand');
+    if (subEl)   subEl.textContent   = 'Rs\u00a0' + fmt(data.subtotal);
+    if (delEl)   delEl.textContent   = data.delivery > 0 ? 'Rs\u00a0' + data.delivery : 'FREE';
+    if (grandEl) grandEl.textContent = 'Rs\u00a0' + fmt(data.grand_total);
+}
+
+function clearAll() {
+    if (!confirm('Clear entire cart?')) return;
+    document.getElementById('clear-form').submit();
+}
+
+function fmt(n) {
+    return Math.round(n).toLocaleString('en-IN');
+}
+</script>
 </body>
 </html>
