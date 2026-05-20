@@ -1,0 +1,2 @@
+# Deny direct HTTP access to this internal application folder.
+Require all denied

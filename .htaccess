@@ -1,0 +1,22 @@
+# Herald Canteen Apache hardening
+# Prevent directory browsing and make index.php the default file.
+Options -Indexes +FollowSymLinks
+DirectoryIndex index.php index.html
+
+# Block direct browser access to backend/sensitive directories.
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # Sensitive application folders must never be browsed directly.
+    RewriteRule ^(config|includes|database|logs|vendor)(/|$) - [F,L,NC]
+
+    # Block hidden files and common sensitive file extensions.
+    RewriteRule (^|/)\. - [F,L]
+    RewriteRule \.(sql|md|log|bak|backup|old|orig|env|ini|yml|yaml)$ - [F,L,NC]
+    RewriteRule ^(composer\.(json|lock)|package(-lock)?\.json)$ - [F,L,NC]
+</IfModule>
+
+# Extra protection when mod_rewrite is unavailable.
+<FilesMatch "(^\.|composer\.(json|lock)$|package(-lock)?\.json$|.*\.(sql|md|log|bak|backup|old|orig|env|ini|yml|yaml)$)">
+    Require all denied
+</FilesMatch>
