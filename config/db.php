@@ -1,14 +1,10 @@
 <?php
-$host = "localhost";
-$user = "root";
-$pass = "";
-$db   = "Swaad_Unlimited";
-
-// Create connection
+$host = 'localhost';
+$db   = 'dashboard';
+$user = 'root';
+$pass = '';
 $conn = new mysqli($host, $user, $pass, $db);
-
-// Check connection
 if ($conn->connect_error) {
-    die("Database Connection Failed: " . $conn->connect_error);
+    die("Connection failed: " . $conn->connect_error);
 }
 ?>
